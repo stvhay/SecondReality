@@ -8,34 +8,92 @@
       :root {
         color-scheme: dark;
         font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-        background: #090909;
-        color: #eeeeee;
+        background: #050505;
+        color: #f0f0f0;
+        --hud-dim: 0.32;
+      }
+
+      * {
+        box-sizing: border-box;
       }
 
       body {
         margin: 0;
         min-height: 100vh;
-        display: grid;
-        place-items: center;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
       }
 
-      main {
-        width: min(96vw, 960px);
-        padding: 24px;
+      .hud {
+        opacity: var(--hud-dim);
+        transition: opacity 220ms ease;
+      }
+
+      .hud:hover,
+      .hud:focus-within,
+      body.scrolled .hud {
+        opacity: 1;
+      }
+
+      .stage {
+        width: 100%;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 14px;
+        padding: 18px 0 24px;
+      }
+
+      header {
+        width: min(96vw, 1200px);
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 16px;
+      }
+
+      h1 {
+        font-size: 13px;
+        font-weight: 500;
+        margin: 0;
+        letter-spacing: 0.02em;
+      }
+
+      .links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 14px;
+        font-size: 12px;
+      }
+
+      a {
+        color: #8be9fd;
+        text-decoration: none;
+      }
+
+      a:hover {
+        text-decoration: underline;
       }
 
       .screen {
-        width: 100%;
-        max-width: 900px;
+        width: min(100vw, calc((100vh - 220px) * 4 / 3));
+        max-width: 100vw;
         aspect-ratio: 4 / 3;
         position: relative;
         overflow: hidden;
-        border: 1px solid #333333;
-        border-radius: 10px;
         background: #000000;
       }
 
+      body.raw-signal .screen {
+        width: min(100vw, calc((100vh - 220px) * 320 / 400));
+        aspect-ratio: 320 / 400;
+      }
+
       body.raw-active .screen {
+        width: min(100vw, calc((100vh - 220px) * 320 / 280));
         aspect-ratio: 320 / 280;
       }
 
@@ -53,70 +111,174 @@
         image-rendering: crisp-edges;
       }
 
-      h1 {
-        font-size: 18px;
-        margin: 0 0 12px;
+      .screen-inner {
+        position: absolute;
+        inset: 0;
       }
 
-      .links {
+      .screen:fullscreen {
+        width: 100vw;
+        height: 100vh;
+        aspect-ratio: auto;
+        display: grid;
+        place-items: center;
+        background: #000;
+      }
+
+      .screen:fullscreen .screen-inner {
+        position: relative;
+        inset: auto;
+        width: min(100vw, calc(100vh * 4 / 3));
+        height: min(100vh, calc(100vw * 3 / 4));
+      }
+
+      body.raw-signal .screen:fullscreen .screen-inner {
+        width: min(100vw, calc(100vh * 320 / 400));
+        height: min(100vh, calc(100vw * 400 / 320));
+      }
+
+      body.raw-active .screen:fullscreen .screen-inner {
+        width: min(100vw, calc(100vh * 320 / 280));
+        height: min(100vh, calc(100vw * 280 / 320));
+      }
+
+      .controls {
+        width: min(96vw, 1200px);
         display: flex;
         flex-wrap: wrap;
-        gap: 12px;
-        margin: 0 0 12px;
+        align-items: center;
+        gap: 12px 18px;
         font-size: 13px;
       }
 
-      a {
-        color: #8be9fd;
+      .mode-selector {
+        display: inline-flex;
+        border: 1px solid #2e2e2e;
+        border-radius: 6px;
+        overflow: hidden;
       }
 
-      p {
-        line-height: 1.5;
-        color: #cfcfcf;
+      .mode-selector button {
+        background: transparent;
+        color: #b0b0b0;
+        border: none;
+        padding: 7px 14px;
+        cursor: pointer;
+        font: inherit;
+      }
+
+      .mode-selector button + button {
+        border-left: 1px solid #2e2e2e;
+      }
+
+      .mode-selector button[aria-pressed="true"] {
+        background: #242424;
+        color: #ffffff;
+      }
+
+      .mode-selector button:hover {
+        background: #1a1a1a;
+        color: #ffffff;
+      }
+
+      .mode-help {
+        flex: 1 1 280px;
+        color: #888;
+        margin: 0;
+        line-height: 1.45;
+      }
+
+      .actions {
+        display: flex;
+        gap: 8px;
+      }
+
+      .actions button {
+        background: #181818;
+        color: #d0d0d0;
+        border: 1px solid #2e2e2e;
+        padding: 7px 12px;
+        border-radius: 6px;
+        cursor: pointer;
+        font: inherit;
+      }
+
+      .actions button:hover {
+        background: #242424;
+        color: #ffffff;
+      }
+
+      .details {
+        width: min(92vw, 720px);
+        margin: 96px 0 80px;
+        font-size: 13px;
+        line-height: 1.55;
+        color: #c0c0c0;
       }
 
       .status {
-        margin: 12px 0;
-        color: #8be9fd;
+        font-size: 11px;
+        color: #707070;
+        margin: 0 0 16px;
+        font-variant-numeric: tabular-nums;
       }
 
-      button {
-        margin-right: 8px;
-        padding: 8px 12px;
-        color: #eeeeee;
-        background: #202020;
-        border: 1px solid #555555;
-        border-radius: 4px;
+      .details p {
+        margin: 0 0 14px;
       }
     </style>
   </head>
   <body>
-    <main>
-      <h1>Second Reality PLZ plasma JavaScript port</h1>
-      <nav class="links" aria-label="Demo links">
-        <a href="https://stvhay.github.io/SecondReality/">Live demo</a>
-        <a href="https://github.com/stvhay/SecondReality/tree/master/PLZPART/javascript">Source and notes</a>
-        <a href="https://github.com/stvhay/SecondReality">Repository</a>
-      </nav>
-      <div class="screen">
-        <canvas data-second-reality-plasma width="320" height="280"></canvas>
-        <canvas data-second-reality-plasma-crt></canvas>
+    <main class="stage">
+      <header class="hud">
+        <h1>Second Reality &mdash; PLZ plasma (JavaScript port)</h1>
+        <nav class="links" aria-label="Demo links">
+          <a href="https://github.com/stvhay/SecondReality/tree/master/PLZPART/javascript">Source &amp; notes</a>
+          <a href="https://github.com/stvhay/SecondReality">Repository</a>
+        </nav>
+      </header>
+
+      <div class="screen" id="screen">
+        <div class="screen-inner">
+          <canvas data-second-reality-plasma width="320" height="280"></canvas>
+          <canvas data-second-reality-plasma-crt></canvas>
+        </div>
       </div>
-      <div class="status" id="status"></div>
-      <button id="toggle" type="button">Pause</button>
-      <button id="reset" type="button">Reset</button>
-      <button id="presentation" type="button">Raw VGA signal</button>
-      <p>
-        This recreates the plasma part listed in SCRIPT immediately before
-        Plasmacube. It keeps the original lookup-table formula, phase speeds,
-        palette fades, 70 Hz stepping, VGA planar checkerboard interleave, and
-        the 320x400 line-compare presentation. The default view sends that
-        signal through a WebGL2 shader modeled on an NEC MultiSync-class 1992
-        shadow-mask monitor: CRT-gamma decode, vertical scan beam, staggered
-        shadow-mask triads, phosphor spread, and separable halation bloom.
-        Geometry is left flat &mdash; no curvature, no warp.
-      </p>
+
+      <div class="controls">
+        <div class="mode-selector" role="radiogroup" aria-label="View mode">
+          <button type="button" role="radio" data-presentation="crt" aria-checked="true" aria-pressed="true">Monitor</button>
+          <button type="button" role="radio" data-presentation="signal" aria-checked="false" aria-pressed="false">Signal</button>
+          <button type="button" role="radio" data-presentation="active" aria-checked="false" aria-pressed="false">Plasma</button>
+        </div>
+        <p class="mode-help" id="mode-help"></p>
+        <div class="actions">
+          <button id="toggle" type="button">Pause</button>
+          <button id="reset" type="button">Reset</button>
+          <button id="fullscreen" type="button">Fullscreen</button>
+        </div>
+      </div>
     </main>
+
+    <section class="details hud" aria-label="Demo details">
+      <div class="status" id="status"></div>
+      <p>
+        This recreates the plasma part listed in <code>SCRIPT</code> immediately before
+        Plasmacube. It keeps the original lookup-table formula, phase speeds,
+        palette fades, 70&nbsp;Hz stepping, VGA planar checkerboard interleave, and
+        the 320&times;400 line-compare presentation.
+      </p>
+      <p>
+        <strong>Monitor</strong> sends that signal through a WebGL2 shader modelled on a 1992
+        NEC MultiSync-class shadow-mask monitor: CRT-gamma decode, vertical scan
+        beam, staggered shadow-mask triads, horizontal phosphor spread, and a
+        separable halation bloom. Geometry is left flat &mdash; no curvature, no warp.
+        <strong>Signal</strong> shows the raw 320&times;400 framebuffer at square-pixel aspect,
+        including the line-compare drop between palette transitions.
+        <strong>Plasma</strong> is just the 320&times;280 chunky pixel buffer the assembly renderer
+        fills into video memory, before the VGA mode places it on screen.
+      </p>
+    </section>
 
     <script type="module">
       import { mountSecondRealityPlasma } from "./second-reality-plasma.mjs";
@@ -130,44 +292,94 @@
         createCrtRenderer: (canvas, width, height) => new CRTRenderer(canvas, width, height),
       });
       window.secondRealityPlasmaDemo = demo;
-      let running = true;
-      const presentations = ["crt", "signal", "active"];
-      const labels = {
-        crt: "Raw VGA signal",
-        signal: "Active pixels",
-        active: "CRT transfer",
+
+      const MODE_HELP = {
+        crt: "1992 NEC MultiSync-style shadow-mask shader: gamma decode, scan beam, phosphor spread, halation. Flat geometry, no warp.",
+        signal: "Raw 320×400 VGA framebuffer with square pixels. Includes the line-compare drop between palette transitions.",
+        active: "The 320×280 chunky plasma image the assembly renderer fills into video memory, before VGA presentation.",
       };
-      const bodyClasses = {
+
+      const BODY_CLASSES = {
         crt: "",
         signal: "raw-signal",
         active: "raw-active",
       };
-      let presentationIndex = 0;
 
-      document.querySelector("#toggle").addEventListener("click", (event) => {
-        running = !running;
-        event.currentTarget.textContent = running ? "Pause" : "Resume";
-        if (running) {
-          demo.start();
-        } else {
-          demo.stop();
+      const modeHelp = document.getElementById("mode-help");
+      const modeButtons = Array.from(document.querySelectorAll(".mode-selector [data-presentation]"));
+      const screenEl = document.getElementById("screen");
+      const toggleBtn = document.getElementById("toggle");
+      const resetBtn = document.getElementById("reset");
+      const fullscreenBtn = document.getElementById("fullscreen");
+
+      let running = true;
+      let presentation = "crt";
+
+      function setMode(next) {
+        if (!MODE_HELP[next]) return;
+        presentation = next;
+        document.body.classList.remove("raw-signal", "raw-active");
+        if (BODY_CLASSES[next]) document.body.classList.add(BODY_CLASSES[next]);
+        for (const btn of modeButtons) {
+          const on = btn.dataset.presentation === next;
+          btn.setAttribute("aria-checked", String(on));
+          btn.setAttribute("aria-pressed", String(on));
         }
+        modeHelp.textContent = MODE_HELP[next];
+        demo.setPresentation(next);
+      }
+
+      for (const btn of modeButtons) {
+        btn.addEventListener("click", () => setMode(btn.dataset.presentation));
+      }
+
+      toggleBtn.addEventListener("click", () => {
+        running = !running;
+        toggleBtn.textContent = running ? "Pause" : "Resume";
+        if (running) demo.start();
+        else demo.stop();
       });
 
-      document.querySelector("#reset").addEventListener("click", () => {
+      resetBtn.addEventListener("click", () => {
         demo.plasma.reset();
       });
 
-      document.querySelector("#presentation").addEventListener("click", (event) => {
-        presentationIndex = (presentationIndex + 1) % presentations.length;
-        const presentation = presentations[presentationIndex];
-        document.body.classList.remove("raw-signal", "raw-active");
-        if (bodyClasses[presentation]) {
-          document.body.classList.add(bodyClasses[presentation]);
+      const fullscreenSupported = Boolean(
+        screenEl.requestFullscreen || screenEl.webkitRequestFullscreen,
+      );
+      if (!fullscreenSupported) {
+        fullscreenBtn.disabled = true;
+        fullscreenBtn.title = "Fullscreen not supported in this browser";
+      }
+      fullscreenBtn.addEventListener("click", async () => {
+        if (document.fullscreenElement) {
+          await document.exitFullscreen();
+        } else if (screenEl.requestFullscreen) {
+          await screenEl.requestFullscreen();
+        } else if (screenEl.webkitRequestFullscreen) {
+          screenEl.webkitRequestFullscreen();
         }
-        event.currentTarget.textContent = labels[presentation];
-        demo.setPresentation(presentation);
       });
+      document.addEventListener("fullscreenchange", () => {
+        fullscreenBtn.textContent = document.fullscreenElement ? "Exit fullscreen" : "Fullscreen";
+      });
+
+      const stageHeight = () => document.querySelector(".stage").getBoundingClientRect().height;
+      let scrollScheduled = false;
+      function onScroll() {
+        if (scrollScheduled) return;
+        scrollScheduled = true;
+        requestAnimationFrame(() => {
+          scrollScheduled = false;
+          const threshold = Math.max(120, stageHeight() * 0.4);
+          document.body.classList.toggle("scrolled", window.scrollY > threshold);
+        });
+      }
+      window.addEventListener("scroll", onScroll, { passive: true });
+      onScroll();
+
+      // Initial mode wiring
+      setMode("crt");
     </script>
   </body>
 </html>
