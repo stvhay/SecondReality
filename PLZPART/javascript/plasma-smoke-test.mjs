@@ -79,4 +79,16 @@ assert.deepEqual(transition.l, [1000, 2000, 4000, 4000]);
 assert.equal(transition.paletteIndex, 1);
 assert.equal(transition.fadeFrame, 0);
 
+const auto = new SecondRealityPlasma({ tables, palettes });
+auto.step(1012);
+assert.equal(auto.nextPaletteSwitch, 0);
+assert.equal(auto.paletteIndex, 0);
+auto.step(1);
+assert.equal(auto.nextPaletteSwitch, 1);
+assert.equal(auto.paletteIndex, 0);
+assert.equal(auto.dropCounter, 2);
+auto.step(63);
+assert.equal(auto.paletteIndex, 1);
+assert.equal(Math.floor(auto.musicFrame), 768);
+
 console.log("Second Reality plasma JavaScript smoke test passed");

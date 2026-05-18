@@ -6,7 +6,7 @@ import { chromium } from "playwright";
 const defaults = {
   url: "https://stvhay.github.io/SecondReality/",
   out: "captures/plasma",
-  frames: "0,64,128,256,512,723,788,1491,1556,1875,1940,2259,2324",
+  frames: "0,70,350,700,1012,1013,1076,2087,2088,2151,2624,2625,2688,3162,3163,3226",
   presentation: "signal",
   selector: ".screen",
 };
