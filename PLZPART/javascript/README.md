@@ -10,6 +10,10 @@ Run it from this directory with any static HTTP server, then open
 python3 -m http.server 8000
 ```
 
+The repository also includes `.github/workflows/plasma-pages.yml`, which
+publishes this directory to GitHub Pages after changes land on `master`. It can
+also be run manually from the Actions tab with `workflow_dispatch`.
+
 ## Source map
 
 - `PLZPART/PLZ.C` owns the high-level part loop, palette presets, phase
