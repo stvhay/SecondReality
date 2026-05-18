@@ -3,8 +3,9 @@
 const ORIGINAL_PI = 3.1415926535;
 const TWO_PI = ORIGINAL_PI * 2;
 
-export const PLASMA_WIDTH_BYTES = 80;
-export const PLASMA_WIDTH = PLASMA_WIDTH_BYTES * 4;
+export const PLASMA_QUADS = 80;
+export const PLASMA_WIDTH_BYTES = PLASMA_QUADS;
+export const PLASMA_WIDTH = PLASMA_QUADS * 4;
 export const PLASMA_HEIGHT = 280;
 export const VGA_SIGNAL_WIDTH = 320;
 export const VGA_SIGNAL_HEIGHT = 400;
@@ -240,8 +241,8 @@ export class SecondRealityPlasma {
     this.tables = options.tables || getSharedTables();
     this.palettes = options.palettes || generatePalettes(this.tables.ptau);
     this.paletteDeltas = options.paletteDeltas || generatePaletteDeltas(this.tables.ptau);
-    this.widthBytes = options.widthBytes || PLASMA_WIDTH_BYTES;
-    this.width = this.widthBytes * 4;
+    this.quads = options.quads || options.widthBytes || PLASMA_QUADS;
+    this.width = this.quads * 4;
     this.height = options.height || PLASMA_HEIGHT;
     this.signalWidth = options.signalWidth || VGA_SIGNAL_WIDTH;
     this.signalHeight = options.signalHeight || VGA_SIGNAL_HEIGHT;
@@ -356,17 +357,21 @@ export class SecondRealityPlasma {
     this.updatePaletteAccumulator();
   }
 
-  plasmaByte(y, byteX, phases) {
+  plasmaQuad(y, quadX, phases) {
     const [c1, c2, c3, c4] = phases;
     const y2 = y << 1;
-    const reverseX = PLASMA_WIDTH_BYTES - byteX;
+    const reverseX = PLASMA_QUADS - quadX;
     const firstWave = this.tables.lsini16[(c2 + y + reverseX * 4) & LSINI_MASK];
-    const secondWave = this.tables.lsini4[(c4 + y + byteX * 16) & LSINI_MASK];
+    const secondWave = this.tables.lsini4[(c4 + y + quadX * 16) & LSINI_MASK];
 
-    const firstIndex = (byteX * 8 + firstWave + c1) & PSINI_MASK;
+    const firstIndex = (quadX * 8 + firstWave + c1) & PSINI_MASK;
     const secondIndex = (secondWave + y2 + c3 + reverseX * 4) & PSINI_MASK;
 
     return (this.tables.psini[firstIndex] + this.tables.psini[secondIndex]) & 255;
+  }
+
+  plasmaByte(y, byteX, phases) {
+    return this.plasmaQuad(y, byteX, phases);
   }
 
   renderIndexedFrame(target = this.indexedFrame) {
@@ -374,21 +379,16 @@ export class SecondRealityPlasma {
       let offset = y * this.width;
       const oddLine = y & 1;
 
-      for (let byteX = 0; byteX < this.widthBytes; byteX += 1) {
-        const k = this.plasmaByte(y, byteX, this.k);
-        const l = this.plasmaByte(y, byteX, this.l);
+      for (let quadX = 0; quadX < this.quads; quadX += 1) {
+        const k = this.plasmaQuad(y, quadX, this.k);
+        const l = this.plasmaQuad(y, quadX, this.l);
+        const evenPixel = oddLine ? k : l;
+        const oddPixel = oddLine ? l : k;
 
-        if (oddLine) {
-          target[offset] = k;
-          target[offset + 1] = l;
-          target[offset + 2] = k;
-          target[offset + 3] = l;
-        } else {
-          target[offset] = l;
-          target[offset + 1] = k;
-          target[offset + 2] = l;
-          target[offset + 3] = k;
-        }
+        target[offset] = evenPixel;
+        target[offset + 1] = oddPixel;
+        target[offset + 2] = evenPixel;
+        target[offset + 3] = oddPixel;
 
         offset += 4;
       }
