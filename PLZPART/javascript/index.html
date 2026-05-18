@@ -87,11 +87,6 @@
         background: #000000;
       }
 
-      body.raw-signal .screen {
-        width: min(96vw, calc((100vh - 150px) * 320 / 400));
-        aspect-ratio: 320 / 400;
-      }
-
       body.raw-active .screen {
         width: min(96vw, calc((100vh - 150px) * 320 / 280));
         aspect-ratio: 320 / 280;
@@ -257,15 +252,15 @@
         the 320&times;400 line-compare presentation.
       </p>
       <p>
-        <strong>Monitor</strong> sends that signal through a WebGL2 shader modelled on a 1992
-        high-end CRT: CRT-gamma decode, vertical scan beam, wide horizontal
-        phosphor spread, a smooth cosine RGB-stripe aperture-grille mask, and a
-        separable halation bloom. The smooth mask and pre-blurred source keep
-        fractional output-to-source sampling alias-free; geometry stays flat,
-        no curvature, no warp.
-        <strong>Signal</strong> shows the raw 320&times;400 framebuffer at square-pixel aspect,
-        including the line-compare drop between palette transitions.
-        <strong>Plasma</strong> is just the 320&times;280 chunky pixel buffer the assembly renderer
+        <strong>Monitor</strong> upscales the VGA signal to the display with a slight
+        Gaussian blur sized in source-pixel units (sigma under one source pixel,
+        FWHM just under one). Just enough smoothing to take the staircase off
+        nearest-neighbour scaling without smearing neighbouring source pixels
+        into each other. No scanlines, no mask, no halation.
+        <strong>Signal</strong> shows the raw 320&times;400 framebuffer drawn into the
+        same 4:3 box a real VGA monitor would have used, including the
+        line-compare drop between palette transitions.
+        <strong>Plasma</strong> is the 320&times;280 chunky pixel buffer the assembly renderer
         fills into video memory, before the VGA mode places it on screen.
       </p>
     </section>
@@ -284,8 +279,8 @@
       window.secondRealityPlasmaDemo = demo;
 
       const MODE_HELP = {
-        crt: "1992 high-end CRT shader: gamma decode, scan beam, wide phosphor spread, smooth RGB-stripe aperture grille, halation. Flat geometry, no warp.",
-        signal: "Raw 320×400 VGA framebuffer with square pixels. Includes the line-compare drop between palette transitions.",
+        crt: "VGA signal upscaled to the display with a slight subpixel Gaussian blur (sigma under one source pixel). No CRT effects.",
+        signal: "Raw 320×400 VGA framebuffer drawn at the VGA 4:3 aspect, including the line-compare drop between palette transitions.",
         active: "The 320×280 chunky plasma image the assembly renderer fills into video memory, before VGA presentation.",
       };
 

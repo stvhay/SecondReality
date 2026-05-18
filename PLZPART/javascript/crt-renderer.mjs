@@ -1,19 +1,15 @@
-// WebGL2 CRT renderer for the Second Reality PLZ plasma.
+// Display renderer for the Second Reality PLZ plasma.
 //
-// Targets a high-end 1992 NEC MultiSync-class shadow-mask monitor showing
-// a 320x400 VGA signal. No geometric distortion (no curvature, no warp,
-// no bezel). Effects, in order of application:
+// Upscales the 320x400 VGA signal to the canvas's CSS size and applies a
+// 3x3 Gaussian blur sized in source-pixel units. With sigma below 1 source
+// pixel the filter softens the nearest-neighbour staircase you would
+// otherwise see at fractional scales without smearing detail across
+// neighbouring source pixels.
 //
-//   1. CRT-gamma decode of the 6-bit VGA signal into linear light.
-//   2. Vertical Gaussian scan-beam profile across three nearest source rows.
-//   3. Horizontal Gaussian phosphor spread across three nearest source cols.
-//   4. NEC-style staggered shadow-mask triads (R/G/B stripes with row offset).
-//   5. Separable Gaussian halation blur, additively blended at low gain.
-//   6. sRGB encode for display.
-//
-// Reference: RetroArch crt-royale (Tatsuya79 / TroggleMonkey). This is a
-// simplified pipeline that keeps royale's beam + mask + halation core but
-// drops everything tied to geometry (curvature, interlacing, bezel).
+// This replaces an earlier multi-pass CRT pipeline (scan beam, RGB stripe
+// mask, halation) that produced visible wobble and banding at common
+// devicePixelRatios. The UI still labels the mode "Monitor" — that's what
+// your browser is doing here, just a touch softer than nearest-neighbour.
 
 const QUAD_VS = `#version 300 es
 in vec2 aPosition;
@@ -24,127 +20,36 @@ void main() {
 }
 `;
 
-const BEAM_FS = `#version 300 es
+// 3x3 Gaussian in source-pixel coordinates. Sigma is measured in source
+// pixels, so the blur footprint is constant relative to source pixels
+// regardless of how much the browser stretches the canvas. LINEAR source
+// filtering means each tap is itself a bilinear sample at a fractional
+// source position, so output pixels between source samples stay smooth.
+const BLUR_FS = `#version 300 es
 precision highp float;
 in vec2 vUV;
 out vec4 fragColor;
 
 uniform sampler2D uSource;
 uniform vec2 uSourceSize;
-uniform vec2 uOutputSize;
-uniform float uGamma;
-uniform float uScanSigma;
-uniform float uPhosphorSigma;
-uniform float uMaskStripePx;
-uniform float uMaskLow;
-uniform float uBrightness;
+uniform float uBlurSigma;
 
-const float TWO_PI = 6.283185307179586;
-const float TWO_PI_3 = 2.0943951023931953;
-const float FOUR_PI_3 = 4.1887902047863905;
-
-vec3 crtDecode(vec3 c) {
-  return pow(max(c, 0.0), vec3(uGamma));
-}
-
-// 5-tap horizontal Gaussian over the source. Source texture is LINEAR-filtered,
-// so fractional srcX returns a bilinearly interpolated value, which keeps
-// fractional output-to-source sampling free of source-pixel-edge artefacts.
-vec3 horizontalTap(float srcX, float srcY) {
+void main() {
+  vec2 srcPx = vUV * uSourceSize;
   vec2 texel = 1.0 / uSourceSize;
+  float twoS2 = 2.0 * uBlurSigma * uBlurSigma;
   vec3 acc = vec3(0.0);
   float wSum = 0.0;
-  for (int dx = -2; dx <= 2; ++dx) {
-    float xOff = float(dx);
-    float w = exp(-(xOff * xOff) / (2.0 * uPhosphorSigma * uPhosphorSigma));
-    vec2 uv = vec2((srcX + xOff + 0.5) * texel.x, (srcY + 0.5) * texel.y);
-    acc += crtDecode(texture(uSource, uv).rgb) * w;
-    wSum += w;
-  }
-  return acc / wSum;
-}
-
-void main() {
-  vec2 outPx = vUV * uOutputSize;
-  vec2 srcCoord = vec2(vUV.x * uSourceSize.x - 0.5,
-                       vUV.y * uSourceSize.y - 0.5);
-
-  // 5-tap vertical scan-beam profile.
-  float centerRow = floor(srcCoord.y + 0.5);
-  vec3 beam = vec3(0.0);
-  float wSum = 0.0;
-  for (int dy = -2; dy <= 2; ++dy) {
-    float rowY = centerRow + float(dy);
-    float dist = srcCoord.y - rowY;
-    float w = exp(-(dist * dist) / (2.0 * uScanSigma * uScanSigma));
-    beam += horizontalTap(srcCoord.x, rowY) * w;
-    wSum += w;
-  }
-  vec3 lit = beam / wSum;
-
-  // Smooth cosine RGB stripe mask in output-pixel coordinates. Three phases
-  // offset by 2pi/3 give a Trinitron-style aperture-grille pattern with no
-  // sharp transitions, so the mask doesn't beat against the (smoothed) source
-  // pixel grid and survives the browser's CSS rescale without producing
-  // banding.
-  float maskPeriod = uMaskStripePx * 3.0;
-  float t = outPx.x * TWO_PI / maskPeriod;
-  float low = uMaskLow;
-  float amp = 1.0 - low;
-  vec3 mask = vec3(
-    low + amp * (0.5 + 0.5 * cos(t)),
-    low + amp * (0.5 + 0.5 * cos(t - TWO_PI_3)),
-    low + amp * (0.5 + 0.5 * cos(t - FOUR_PI_3))
-  );
-
-  fragColor = vec4(lit * mask * uBrightness, 1.0);
-}
-`;
-
-// Separable Gaussian blur for halation. Kernel is symmetric, 25 taps wide.
-const BLUR_FS = `#version 300 es
-precision highp float;
-in vec2 vUV;
-out vec4 fragColor;
-
-uniform sampler2D uInput;
-uniform vec2 uTexelDir;
-uniform float uSigma;
-
-const int KERNEL_RADIUS = 12;
-
-void main() {
-  vec3 acc = vec3(0.0);
-  float wSum = 0.0;
-  for (int i = -KERNEL_RADIUS; i <= KERNEL_RADIUS; ++i) {
-    float f = float(i);
-    float w = exp(-(f * f) / (2.0 * uSigma * uSigma));
-    vec3 c = texture(uInput, vUV + uTexelDir * f).rgb;
-    acc += c * w;
-    wSum += w;
+  for (int dy = -1; dy <= 1; ++dy) {
+    for (int dx = -1; dx <= 1; ++dx) {
+      vec2 off = vec2(float(dx), float(dy));
+      float w = exp(-dot(off, off) / twoS2);
+      vec2 uv = (srcPx + off) * texel;
+      acc += texture(uSource, uv).rgb * w;
+      wSum += w;
+    }
   }
   fragColor = vec4(acc / wSum, 1.0);
-}
-`;
-
-const COMPOSITE_FS = `#version 300 es
-precision highp float;
-in vec2 vUV;
-out vec4 fragColor;
-
-uniform sampler2D uLit;
-uniform sampler2D uHalation;
-uniform float uHalationGain;
-uniform float uInvGamma;
-
-vec3 crtEncode(vec3 c) {
-  return pow(max(c, 0.0), vec3(uInvGamma));
-}
-
-void main() {
-  vec3 lit = texture(uLit, vUV).rgb;
-  vec3 hal = texture(uHalation, vUV).rgb;
-  fragColor = vec4(crtEncode(lit + hal * uHalationGain), 1.0);
 }
 `;
 
@@ -155,7 +60,7 @@ function compileShader(gl, type, source) {
   if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
     const log = gl.getShaderInfoLog(shader);
     gl.deleteShader(shader);
-    throw new Error(`CRT shader compile failed: ${log}`);
+    throw new Error(`Display shader compile failed: ${log}`);
   }
   return shader;
 }
@@ -173,44 +78,26 @@ function linkProgram(gl, vsSource, fsSource) {
   if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
     const log = gl.getProgramInfoLog(program);
     gl.deleteProgram(program);
-    throw new Error(`CRT shader link failed: ${log}`);
+    throw new Error(`Display shader link failed: ${log}`);
   }
   return program;
 }
 
-function createTexture(gl, width, height, { internalFormat = gl.RGBA8, filter = gl.LINEAR } = {}) {
+function createSourceTexture(gl, width, height) {
   const tex = gl.createTexture();
   gl.bindTexture(gl.TEXTURE_2D, tex);
-  gl.texStorage2D(gl.TEXTURE_2D, 1, internalFormat, width, height);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
+  gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA8, width, height);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   return tex;
 }
 
-function createFramebuffer(gl, texture) {
-  const fb = gl.createFramebuffer();
-  gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
-  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
-  if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
-    throw new Error("CRT framebuffer incomplete");
-  }
-  return fb;
-}
-
+// Sigma is in source-pixel units. 0.4 source pixels gives FWHM ~0.94
+// source pixels: softens pixel edges, does not smear neighbours together.
 export const DEFAULT_CRT_PARAMS = Object.freeze({
-  gamma: 2.2,
-  scanSigma: 0.85,
-  // Phosphor spread in source-pixel units. Wider than one pixel breaks the
-  // source-pixel grid before the mask sees it, so the smooth cosine mask
-  // doesn't beat against fractional source boundaries at the display.
-  phosphorSigma: 1.10,
-  maskStripePx: 3.0,
-  maskLow: 0.42,
-  brightness: 1.55,
-  halationSigma: 3.0,
-  halationGain: 0.18,
+  blurSigma: 0.4,
   maxPixelRatio: 2.0,
 });
 
@@ -230,27 +117,15 @@ export class CRTRenderer {
       preserveDrawingBuffer: false,
     });
     if (!gl) {
-      throw new Error("WebGL2 is required for the CRT renderer");
+      throw new Error("WebGL2 is required for the display renderer");
     }
     this.gl = gl;
 
-    this.programs = {
-      beam: linkProgram(gl, QUAD_VS, BEAM_FS),
-      blur: linkProgram(gl, QUAD_VS, BLUR_FS),
-      composite: linkProgram(gl, QUAD_VS, COMPOSITE_FS),
-    };
+    this.program = linkProgram(gl, QUAD_VS, BLUR_FS);
     this.uniforms = {
-      beam: this._collectUniforms(this.programs.beam, [
-        "uSource", "uSourceSize", "uOutputSize",
-        "uGamma", "uScanSigma", "uPhosphorSigma",
-        "uMaskStripePx", "uMaskLow", "uBrightness",
-      ]),
-      blur: this._collectUniforms(this.programs.blur, [
-        "uInput", "uTexelDir", "uSigma",
-      ]),
-      composite: this._collectUniforms(this.programs.composite, [
-        "uLit", "uHalation", "uHalationGain", "uInvGamma",
-      ]),
+      uSource: gl.getUniformLocation(this.program, "uSource"),
+      uSourceSize: gl.getUniformLocation(this.program, "uSourceSize"),
+      uBlurSigma: gl.getUniformLocation(this.program, "uBlurSigma"),
     };
 
     this.quadVBO = gl.createBuffer();
@@ -266,69 +141,11 @@ export class CRTRenderer {
     gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
     gl.bindVertexArray(null);
 
-    // LINEAR filtering so the 5-tap beam shader can sample at fractional
-    // source coordinates without seeing source-pixel edges as hard steps.
-    this.sourceTexture = createTexture(gl, sourceWidth, sourceHeight, {
-      internalFormat: gl.RGBA8,
-      filter: gl.LINEAR,
-    });
-
-    this.fbWidth = 0;
-    this.fbHeight = 0;
-    this.lit = null;
-    this.halH = null;
-    this.halV = null;
-    this.litFB = null;
-    this.halHFB = null;
-    this.halVFB = null;
-  }
-
-  _collectUniforms(program, names) {
-    const gl = this.gl;
-    const out = {};
-    for (const name of names) {
-      out[name] = gl.getUniformLocation(program, name);
-    }
-    return out;
-  }
-
-  _ensureFramebuffers(width, height) {
-    if (this.fbWidth === width && this.fbHeight === height) return;
-    const gl = this.gl;
-    const old = [this.lit, this.halH, this.halV, this.litFB, this.halHFB, this.halVFB];
-    for (const obj of old) {
-      if (!obj) continue;
-      if (obj instanceof WebGLTexture) gl.deleteTexture(obj);
-      else gl.deleteFramebuffer(obj);
-    }
-    this.lit = createTexture(gl, width, height);
-    this.halH = createTexture(gl, width, height);
-    this.halV = createTexture(gl, width, height);
-    this.litFB = createFramebuffer(gl, this.lit);
-    this.halHFB = createFramebuffer(gl, this.halH);
-    this.halVFB = createFramebuffer(gl, this.halV);
-    this.fbWidth = width;
-    this.fbHeight = height;
-  }
-
-  _bindOutput(fb, width, height) {
-    const gl = this.gl;
-    gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
-    gl.viewport(0, 0, width, height);
-  }
-
-  _drawQuad() {
-    const gl = this.gl;
-    gl.bindVertexArray(this.quadVAO);
-    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    this.sourceTexture = createSourceTexture(gl, sourceWidth, sourceHeight);
   }
 
   render(rgbaSource) {
     const gl = this.gl;
-    // Drawing buffer matches device pixels so the browser does no rescaling
-    // of the high-frequency mask pattern. The smooth cosine mask + LINEAR
-    // source filtering keep both source-grid and mask-grid sampling
-    // alias-free at any output resolution.
     const dpr = Math.min(window.devicePixelRatio || 1, this.params.maxPixelRatio);
     const cssWidth = Math.max(1, this.canvas.clientWidth);
     const cssHeight = Math.max(1, this.canvas.clientHeight);
@@ -337,8 +154,6 @@ export class CRTRenderer {
 
     if (this.canvas.width !== width) this.canvas.width = width;
     if (this.canvas.height !== height) this.canvas.height = height;
-
-    this._ensureFramebuffers(width, height);
 
     gl.bindTexture(gl.TEXTURE_2D, this.sourceTexture);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
@@ -350,56 +165,17 @@ export class CRTRenderer {
       rgbaSource,
     );
 
-    const p = this.params;
-
-    // Pass 1: source -> lit (scan beam + phosphor spread + mask)
-    this._bindOutput(this.litFB, width, height);
-    gl.useProgram(this.programs.beam);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, width, height);
+    gl.useProgram(this.program);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.sourceTexture);
-    gl.uniform1i(this.uniforms.beam.uSource, 0);
-    gl.uniform2f(this.uniforms.beam.uSourceSize, this.sourceWidth, this.sourceHeight);
-    gl.uniform2f(this.uniforms.beam.uOutputSize, width, height);
-    gl.uniform1f(this.uniforms.beam.uGamma, p.gamma);
-    gl.uniform1f(this.uniforms.beam.uScanSigma, p.scanSigma);
-    gl.uniform1f(this.uniforms.beam.uPhosphorSigma, p.phosphorSigma);
-    gl.uniform1f(this.uniforms.beam.uMaskStripePx, p.maskStripePx);
-    gl.uniform1f(this.uniforms.beam.uMaskLow, p.maskLow);
-    gl.uniform1f(this.uniforms.beam.uBrightness, p.brightness);
-    this._drawQuad();
+    gl.uniform1i(this.uniforms.uSource, 0);
+    gl.uniform2f(this.uniforms.uSourceSize, this.sourceWidth, this.sourceHeight);
+    gl.uniform1f(this.uniforms.uBlurSigma, this.params.blurSigma);
 
-    // Pass 2: horizontal halation blur of lit -> halH
-    this._bindOutput(this.halHFB, width, height);
-    gl.useProgram(this.programs.blur);
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, this.lit);
-    gl.uniform1i(this.uniforms.blur.uInput, 0);
-    gl.uniform2f(this.uniforms.blur.uTexelDir, 1 / width, 0);
-    gl.uniform1f(this.uniforms.blur.uSigma, p.halationSigma);
-    this._drawQuad();
-
-    // Pass 3: vertical halation blur of halH -> halV
-    this._bindOutput(this.halVFB, width, height);
-    gl.useProgram(this.programs.blur);
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, this.halH);
-    gl.uniform1i(this.uniforms.blur.uInput, 0);
-    gl.uniform2f(this.uniforms.blur.uTexelDir, 0, 1 / height);
-    gl.uniform1f(this.uniforms.blur.uSigma, p.halationSigma);
-    this._drawQuad();
-
-    // Pass 4: composite to canvas
-    this._bindOutput(null, width, height);
-    gl.useProgram(this.programs.composite);
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, this.lit);
-    gl.uniform1i(this.uniforms.composite.uLit, 0);
-    gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, this.halV);
-    gl.uniform1i(this.uniforms.composite.uHalation, 1);
-    gl.uniform1f(this.uniforms.composite.uHalationGain, p.halationGain);
-    gl.uniform1f(this.uniforms.composite.uInvGamma, 1.0 / p.gamma);
-    this._drawQuad();
+    gl.bindVertexArray(this.quadVAO);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
   }
 
   setParams(params) {
@@ -408,13 +184,8 @@ export class CRTRenderer {
 
   dispose() {
     const gl = this.gl;
-    for (const program of Object.values(this.programs)) gl.deleteProgram(program);
-    for (const obj of [this.lit, this.halH, this.halV, this.sourceTexture]) {
-      if (obj) gl.deleteTexture(obj);
-    }
-    for (const fb of [this.litFB, this.halHFB, this.halVFB]) {
-      if (fb) gl.deleteFramebuffer(fb);
-    }
+    if (this.program) gl.deleteProgram(this.program);
+    if (this.sourceTexture) gl.deleteTexture(this.sourceTexture);
     if (this.quadVBO) gl.deleteBuffer(this.quadVBO);
     if (this.quadVAO) gl.deleteVertexArray(this.quadVAO);
   }
