@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Second Reality PLZ plasma JavaScript port</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+        background: #090909;
+        color: #eeeeee;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+      }
+
+      main {
+        width: min(96vw, 960px);
+        padding: 24px;
+      }
+
+      canvas {
+        width: 100%;
+        max-width: 900px;
+        aspect-ratio: 336 / 280;
+        display: block;
+        border: 1px solid #333333;
+        image-rendering: pixelated;
+        image-rendering: crisp-edges;
+        background: #000000;
+      }
+
+      h1 {
+        font-size: 18px;
+        margin: 0 0 12px;
+      }
+
+      p {
+        line-height: 1.5;
+        color: #cfcfcf;
+      }
+
+      .status {
+        margin: 12px 0;
+        color: #8be9fd;
+      }
+
+      button {
+        margin-right: 8px;
+        padding: 8px 12px;
+        color: #eeeeee;
+        background: #202020;
+        border: 1px solid #555555;
+        border-radius: 4px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Second Reality PLZ plasma JavaScript port</h1>
+      <canvas data-second-reality-plasma width="336" height="280"></canvas>
+      <div class="status" id="status"></div>
+      <button id="toggle" type="button">Pause</button>
+      <button id="reset" type="button">Reset</button>
+      <p>
+        This recreates the plasma part listed in SCRIPT immediately before
+        Plasmacube. It keeps the original lookup-table formula, phase speeds,
+        palette presets, and VGA planar checkerboard interleave, but renders to
+        an HTML canvas instead of tweaked VGA memory.
+      </p>
+    </main>
+
+    <script type="module">
+      import { mountSecondRealityPlasma } from "./second-reality-plasma.mjs";
+
+      const demo = mountSecondRealityPlasma({
+        canvas: "[data-second-reality-plasma]",
+        status: "#status",
+      });
+      let running = true;
+
+      document.querySelector("#toggle").addEventListener("click", (event) => {
+        running = !running;
+        event.currentTarget.textContent = running ? "Pause" : "Resume";
+        if (running) {
+          demo.start();
+        } else {
+          demo.stop();
+        }
+      });
+
+      document.querySelector("#reset").addEventListener("click", () => {
+        demo.plasma.reset();
+      });
+    </script>
+  </body>
+</html>
