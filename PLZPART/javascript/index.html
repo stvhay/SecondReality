@@ -37,11 +37,21 @@
         background: #000000;
       }
 
+      .screen::before,
       .screen::after {
         content: "";
         position: absolute;
         inset: 0;
         pointer-events: none;
+      }
+
+      .screen::before {
+        opacity: 0;
+        background: inherit;
+        filter: blur(10px) saturate(1.45);
+      }
+
+      .screen::after {
         opacity: 0.28;
         background:
           repeating-linear-gradient(
@@ -55,11 +65,14 @@
         mix-blend-mode: screen;
       }
 
-      body.sharp .screen {
+      body.raw-active .screen {
         aspect-ratio: 336 / 280;
       }
 
-      body.sharp .screen::after {
+      body.raw-signal .screen::before,
+      body.raw-signal .screen::after,
+      body.raw-active .screen::before,
+      body.raw-active .screen::after {
         display: none;
       }
 
@@ -67,11 +80,12 @@
         width: 100%;
         height: 100%;
         display: block;
-        filter: blur(0.35px) saturate(1.22) contrast(1.08);
+        filter: blur(0.45px) saturate(1.28) contrast(1.08);
         background: #000000;
       }
 
-      body.sharp canvas {
+      body.raw-signal canvas,
+      body.raw-active canvas {
         filter: none;
         image-rendering: pixelated;
         image-rendering: crisp-edges;
@@ -111,12 +125,13 @@
       <div class="status" id="status"></div>
       <button id="toggle" type="button">Pause</button>
       <button id="reset" type="button">Reset</button>
-      <button id="crt" type="button">Sharp pixels</button>
+      <button id="presentation" type="button">Raw VGA signal</button>
       <p>
         This recreates the plasma part listed in SCRIPT immediately before
         Plasmacube. It keeps the original lookup-table formula, phase speeds,
-        palette fades, 70 Hz stepping, and VGA planar checkerboard interleave,
-        but renders to an HTML canvas instead of tweaked VGA memory.
+        palette fades, 70 Hz stepping, VGA planar checkerboard interleave, and
+        the 384x400 line-compare presentation. The default view then applies a
+        separate CRT/video transfer approximation.
       </p>
     </main>
 
@@ -126,8 +141,21 @@
       const demo = mountSecondRealityPlasma({
         canvas: "[data-second-reality-plasma]",
         status: "#status",
+        presentation: "crt",
       });
       let running = true;
+      const presentations = ["crt", "signal", "active"];
+      const labels = {
+        crt: "Raw VGA signal",
+        signal: "Active pixels",
+        active: "CRT transfer",
+      };
+      const bodyClasses = {
+        crt: "",
+        signal: "raw-signal",
+        active: "raw-active",
+      };
+      let presentationIndex = 0;
 
       document.querySelector("#toggle").addEventListener("click", (event) => {
         running = !running;
@@ -143,11 +171,15 @@
         demo.plasma.reset();
       });
 
-      document.querySelector("#crt").addEventListener("click", (event) => {
-        document.body.classList.toggle("sharp");
-        event.currentTarget.textContent = document.body.classList.contains("sharp")
-          ? "CRT presentation"
-          : "Sharp pixels";
+      document.querySelector("#presentation").addEventListener("click", (event) => {
+        presentationIndex = (presentationIndex + 1) % presentations.length;
+        const presentation = presentations[presentationIndex];
+        document.body.classList.remove("raw-signal", "raw-active");
+        if (bodyClasses[presentation]) {
+          document.body.classList.add(bodyClasses[presentation]);
+        }
+        event.currentTarget.textContent = labels[presentation];
+        demo.setPresentation(presentation);
       });
     </script>
   </body>

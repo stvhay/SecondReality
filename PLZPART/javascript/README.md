@@ -25,6 +25,38 @@ also be run manually from the Actions tab with `workflow_dispatch`.
   during drops, and streams palette fades to the DAC.
 - `PLZPART/TWEAK.ASM` sets the custom planar VGA mode used by the part.
 
+## Three layers in this port
+
+The demo now separates the effect into three layers so fidelity changes can be
+traced back to the original source:
+
+1. **Active plasma pixels**: the 336x280 chunky reconstruction of
+   `ASMYT.ASM::plzline`. This is the lookup-table math and VGA plane
+   checkerboard, before display timing.
+2. **Raw VGA signal**: a 384x400 frame matching `TWEAK.ASM::tw_opengraph2`
+   (`CRTC offset 0x30`, 400 scanlines). The 336x280 plasma is placed starting
+   at scanline 60, and `COPPER.ASM::do_drop`'s line-compare curve can move it
+   down during transitions.
+3. **CRT/video transfer**: a deliberately non-source layer that applies browser
+   presentation effects such as blur, saturation, scanlines, and vignette. This
+   is where captured-video/CRT matching belongs; the raw VGA signal remains
+   available for source-faithful comparisons.
+
+The button in `index.html` cycles through these layers.
+
+## Port status and traceability
+
+| Original behavior | Source | Port status |
+| --- | --- | --- |
+| Sine lookup tables and palette ramps | `PLZ.C`, `*.INC` | Ported; smoke test compares generated tables to checked-in include files. |
+| Unrolled plasma byte renderer | `ASMYT.ASM::plzline` | Ported as `plasmaByte` / `renderIndexedFrame`. |
+| Plane-mask checkerboard interleave | `PLZ.C` writes masks `0x0a`/`0x05` | Ported into chunky pixels. |
+| 70 Hz retrace phase stepping | `COPPER.ASM::moveplz` | Ported as fixed-step animation. |
+| 384x400 tweaked VGA presentation | `TWEAK.ASM::tw_opengraph2` | Ported as the "Raw VGA signal" view. |
+| Line-compare drop | `COPPER.ASM::do_drop`, `dtau` | Partially ported: the band position follows the source curve; exact latch/CRTC side effects are not emulated. |
+| DAC fade accumulator | `COPPER.ASM::fadepal` | Approximated; this is a remaining fidelity target. |
+| CRT/capture glow, blur, persistence | Outside the original source | Treated as a separate transfer layer, not part of the source-faithful raw VGA signal. |
+
 ## What the original renderer does
 
 The plasma is not a per-pixel `sin(x) + sin(y)` loop. The assembly self-patches
@@ -78,7 +110,8 @@ The raster-sensitive parts are the transitions and presentation:
   384 logical pixels per scanline.
 - `set_plzstart` and `do_drop` update CRTC line-compare register `0x18` and the
   high bit in register `0x07`. This creates the moving split/drop used between
-  palette/phase presets.
+  palette/phase presets. The normal visible plasma band begins at scanline 60;
+  the 65-entry `dtau` table moves it down to approximately scanline 404.
 - `copper2` updates the DAC palette during vertical retrace. The JavaScript
   port keeps the palette presets, 70 Hz stepping, and a black/grey-to-palette
   fade approximation, but it does not depend on a real scanout beam.

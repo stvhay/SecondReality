@@ -6,6 +6,9 @@ const TWO_PI = ORIGINAL_PI * 2;
 export const PLASMA_WIDTH_BYTES = 84;
 export const PLASMA_WIDTH = PLASMA_WIDTH_BYTES * 4;
 export const PLASMA_HEIGHT = 280;
+export const VGA_SIGNAL_WIDTH = 384;
+export const VGA_SIGNAL_HEIGHT = 400;
+export const VGA_PLASMA_TOP = 60;
 export const VGA_FPS = 70;
 
 const PHASE_MASK = 4095;
@@ -208,12 +211,15 @@ export function generatePalettes(ptau = getSharedTables().ptau) {
 
 export function dropLineCompare(dropCounter) {
   if (dropCounter <= 0) {
-    return 60;
+    return VGA_PLASMA_TOP;
   }
   if (dropCounter <= 64) {
-    return cInt((((dropCounter * dropCounter) / 4) * 43) / 128 + 60);
+    return cInt((((dropCounter * dropCounter) / 4) * 43) / 128 + VGA_PLASMA_TOP);
   }
-  return 400;
+  if (dropCounter === 65) {
+    return VGA_SIGNAL_HEIGHT;
+  }
+  return VGA_PLASMA_TOP;
 }
 
 export class SecondRealityPlasma {
@@ -223,11 +229,15 @@ export class SecondRealityPlasma {
     this.widthBytes = options.widthBytes || PLASMA_WIDTH_BYTES;
     this.width = this.widthBytes * 4;
     this.height = options.height || PLASMA_HEIGHT;
+    this.signalWidth = options.signalWidth || VGA_SIGNAL_WIDTH;
+    this.signalHeight = options.signalHeight || VGA_SIGNAL_HEIGHT;
     this.autoCycle = options.autoCycle !== false;
     this.loop = options.loop !== false;
     this.emulatePaletteFades = options.emulatePaletteFades !== false;
     this.paletteSwitchFrames = options.paletteSwitchFrames || PALETTE_SWITCH_FRAMES;
     this.indexedFrame = new Uint8Array(this.width * this.height);
+    this.rgbaFrame = new Uint8ClampedArray(this.width * this.height * 4);
+    this.signalFrame = new Uint8ClampedArray(this.signalWidth * this.signalHeight * 4);
     this.displayPalette = new Uint8ClampedArray(256 * 3);
     this.fadeFromPalette = solidPalette(63);
     this.fadeTargetPalette = this.palettes[0].slice();
@@ -333,21 +343,45 @@ export class SecondRealityPlasma {
     return target;
   }
 
-  drawToCanvas(canvasOrContext) {
+  renderSignalFrame(target = this.signalFrame, palette = this.currentPalette()) {
+    target.fill(0);
+    this.renderRGBAFrame(this.rgbaFrame, palette);
+
+    const plasmaTop = this.currentLineCompare();
+    for (let y = 0; y < this.height; y += 1) {
+      const destY = plasmaTop + y;
+      if (destY < 0 || destY >= this.signalHeight) continue;
+
+      const srcOffset = y * this.width * 4;
+      const destOffset = destY * this.signalWidth * 4;
+      target.set(this.rgbaFrame.subarray(srcOffset, srcOffset + this.width * 4), destOffset);
+    }
+
+    return target;
+  }
+
+  drawToCanvas(canvasOrContext, options = {}) {
     const context =
       typeof canvasOrContext.getContext === "function"
         ? canvasOrContext.getContext("2d")
         : canvasOrContext;
     const canvas = context.canvas;
+    const signal = options.signal === true;
+    const width = signal ? this.signalWidth : this.width;
+    const height = signal ? this.signalHeight : this.height;
 
-    if (canvas.width !== this.width) canvas.width = this.width;
-    if (canvas.height !== this.height) canvas.height = this.height;
+    if (canvas.width !== width) canvas.width = width;
+    if (canvas.height !== height) canvas.height = height;
 
-    if (!this.imageData || this.imageData.width !== this.width || this.imageData.height !== this.height) {
-      this.imageData = context.createImageData(this.width, this.height);
+    if (!this.imageData || this.imageData.width !== width || this.imageData.height !== height) {
+      this.imageData = context.createImageData(width, height);
     }
 
-    this.renderRGBAFrame(this.imageData.data);
+    if (signal) {
+      this.renderSignalFrame(this.imageData.data);
+    } else {
+      this.renderRGBAFrame(this.imageData.data);
+    }
     context.putImageData(this.imageData, 0, 0);
   }
 
@@ -403,6 +437,7 @@ export function mountSecondRealityPlasma(options = {}) {
   const plasma = new SecondRealityPlasma(options);
   const fps = options.fps || VGA_FPS;
   const frameMs = 1000 / fps;
+  let presentation = options.presentation || "crt";
   let requestId = 0;
   let previous = 0;
   let accumulator = 0;
@@ -410,7 +445,12 @@ export function mountSecondRealityPlasma(options = {}) {
 
   function updateStatus() {
     if (!status) return;
-    status.textContent = `frame ${plasma.frame} | palette ${plasma.paletteIndex + 1}/${plasma.palettes.length} | line compare ${plasma.currentLineCompare()}`;
+    status.textContent = `frame ${plasma.frame} | palette ${plasma.paletteIndex + 1}/${plasma.palettes.length} | line compare ${plasma.currentLineCompare()} | ${presentation}`;
+  }
+
+  function draw() {
+    plasma.drawToCanvas(canvas, { signal: presentation !== "active" });
+    canvas.dataset.presentation = presentation;
   }
 
   function tick(now) {
@@ -423,7 +463,7 @@ export function mountSecondRealityPlasma(options = {}) {
     if (frames > 0) {
       accumulator = Math.max(0, accumulator - frames * frameMs);
       plasma.step(frames);
-      plasma.drawToCanvas(canvas);
+      draw();
       updateStatus();
     }
     requestId = requestAnimationFrame(tick);
@@ -444,11 +484,17 @@ export function mountSecondRealityPlasma(options = {}) {
     }
   }
 
-  plasma.drawToCanvas(canvas);
+  function setPresentation(nextPresentation) {
+    presentation = nextPresentation;
+    draw();
+    updateStatus();
+  }
+
+  draw();
   updateStatus();
   if (options.autostart !== false) {
     start();
   }
 
-  return { plasma, start, stop };
+  return { plasma, start, stop, setPresentation };
 }

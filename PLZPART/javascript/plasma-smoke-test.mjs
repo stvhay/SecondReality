@@ -4,6 +4,9 @@ import {
   PLASMA_HEIGHT,
   PLASMA_WIDTH,
   SecondRealityPlasma,
+  VGA_PLASMA_TOP,
+  VGA_SIGNAL_HEIGHT,
+  VGA_SIGNAL_WIDTH,
   dropLineCompare,
   generatePalettes,
   generateTables,
@@ -44,11 +47,21 @@ plasma.renderRGBAFrame(rgba);
 assert.equal(rgba.length, PLASMA_WIDTH * PLASMA_HEIGHT * 4);
 assert.equal(rgba[3], 255);
 
+const signal = plasma.renderSignalFrame();
+assert.equal(signal.length, VGA_SIGNAL_WIDTH * VGA_SIGNAL_HEIGHT * 4);
+assert.deepEqual(
+  Array.from(signal.slice(VGA_PLASMA_TOP * VGA_SIGNAL_WIDTH * 4, VGA_PLASMA_TOP * VGA_SIGNAL_WIDTH * 4 + 4)),
+  Array.from(rgba.slice(0, 4)),
+);
+assert.deepEqual(Array.from(signal.slice(0, 4)), [0, 0, 0, 0]);
+
 plasma.step(1);
 assert.deepEqual(plasma.k, [3497, 2298, 3901, 3672]);
 assert.deepEqual(plasma.l, [999, 1998, 3002, 4003]);
 
-assert.equal(dropLineCompare(0), 60);
+assert.equal(dropLineCompare(0), VGA_PLASMA_TOP);
 assert.equal(dropLineCompare(64), 404);
+assert.equal(dropLineCompare(65), VGA_SIGNAL_HEIGHT);
+assert.equal(dropLineCompare(128), VGA_PLASMA_TOP);
 
 console.log("Second Reality plasma JavaScript smoke test passed");
