@@ -10,7 +10,7 @@
         font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
         background: #050505;
         color: #f0f0f0;
-        --hud-dim: 0.32;
+        --hud-dim: 0.22;
       }
 
       * {
@@ -42,8 +42,8 @@
         display: flex;
         flex-direction: column;
         align-items: center;
-        gap: 14px;
-        padding: 18px 0 24px;
+        gap: 8px;
+        padding: 10px 0 20px;
       }
 
       header {
@@ -79,7 +79,7 @@
       }
 
       .screen {
-        width: min(100vw, calc((100vh - 220px) * 4 / 3));
+        width: min(96vw, calc((100vh - 150px) * 4 / 3));
         max-width: 100vw;
         aspect-ratio: 4 / 3;
         position: relative;
@@ -88,12 +88,12 @@
       }
 
       body.raw-signal .screen {
-        width: min(100vw, calc((100vh - 220px) * 320 / 400));
+        width: min(96vw, calc((100vh - 150px) * 320 / 400));
         aspect-ratio: 320 / 400;
       }
 
       body.raw-active .screen {
-        width: min(100vw, calc((100vh - 220px) * 320 / 280));
+        width: min(96vw, calc((100vh - 150px) * 320 / 280));
         aspect-ratio: 320 / 280;
       }
 
@@ -120,26 +120,14 @@
         width: 100vw;
         height: 100vh;
         aspect-ratio: auto;
-        display: grid;
-        place-items: center;
         background: #000;
       }
 
       .screen:fullscreen .screen-inner {
-        position: relative;
-        inset: auto;
-        width: min(100vw, calc(100vh * 4 / 3));
-        height: min(100vh, calc(100vw * 3 / 4));
-      }
-
-      body.raw-signal .screen:fullscreen .screen-inner {
-        width: min(100vw, calc(100vh * 320 / 400));
-        height: min(100vh, calc(100vw * 400 / 320));
-      }
-
-      body.raw-active .screen:fullscreen .screen-inner {
-        width: min(100vw, calc(100vh * 320 / 280));
-        height: min(100vh, calc(100vw * 280 / 320));
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
       }
 
       .controls {
@@ -245,7 +233,7 @@
         </div>
       </div>
 
-      <div class="controls">
+      <div class="controls hud">
         <div class="mode-selector" role="radiogroup" aria-label="View mode">
           <button type="button" role="radio" data-presentation="crt" aria-checked="true" aria-pressed="true">Monitor</button>
           <button type="button" role="radio" data-presentation="signal" aria-checked="false" aria-pressed="false">Signal</button>

@@ -192,15 +192,20 @@ function createFramebuffer(gl, texture) {
 
 export const DEFAULT_CRT_PARAMS = Object.freeze({
   gamma: 2.2,
-  scanSigma: 0.7,
+  scanSigma: 0.85,
   phosphorSigma: 0.55,
   maskStripePx: 3.0,
   maskRowPx: 2.0,
-  maskLow: 0.30,
-  brightness: 1.65,
-  halationSigma: 4.5,
-  halationGain: 0.32,
+  maskLow: 0.32,
+  brightness: 1.55,
+  halationSigma: 3.0,
+  halationGain: 0.18,
   maxPixelRatio: 2.0,
+  // Largest integer source-pixel scale for the WebGL drawing buffer.
+  // The shadow-mask and scan-beam pitch are locked to this buffer grid, so
+  // an integer multiple eliminates Moire that would otherwise beat against
+  // fractional source-pixel boundaries at the display surface.
+  maxIntegerScale: 6,
 });
 
 export class CRTRenderer {
@@ -315,8 +320,20 @@ export class CRTRenderer {
     const dpr = Math.min(window.devicePixelRatio || 1, this.params.maxPixelRatio);
     const cssWidth = Math.max(1, this.canvas.clientWidth);
     const cssHeight = Math.max(1, this.canvas.clientHeight);
-    const width = Math.max(1, Math.round(cssWidth * dpr));
-    const height = Math.max(1, Math.round(cssHeight * dpr));
+    const devW = Math.max(1, Math.round(cssWidth * dpr));
+    const devH = Math.max(1, Math.round(cssHeight * dpr));
+
+    // Largest integer source-pixel scale that fits inside the device-pixel
+    // surface. Locking the backbuffer to N x source dimensions keeps the
+    // shadow-mask and scan beam aligned to the source grid, so the browser
+    // does the only fractional rescale (smoothly) when stretching the canvas
+    // to its CSS box. Eliminates the Moire wobble that otherwise beats
+    // between the mask pitch and ~3.4 device pixels per source pixel.
+    const maxScale = Math.max(1, this.params.maxIntegerScale || 6);
+    const fitScale = Math.min(devW / this.sourceWidth, devH / this.sourceHeight);
+    const scale = Math.max(1, Math.min(maxScale, Math.floor(fitScale)));
+    const width = this.sourceWidth * scale;
+    const height = this.sourceHeight * scale;
 
     if (this.canvas.width !== width) this.canvas.width = width;
     if (this.canvas.height !== height) this.canvas.height = height;
