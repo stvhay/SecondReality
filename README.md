@@ -5,6 +5,14 @@ Source code and data of Second Reality by Future Crew in 1993
 
 This release is made to celebrate the 20th anniversary of the demo.
 
+## JavaScript plasma demo
+
+The ported PLZ plasma part is hosted on GitHub Pages:
+
+https://stvhay.github.io/SecondReality/
+
+Source and notes live in [`PLZPART/javascript`](PLZPART/javascript/).
+
 Wikipedia links :
 
 - [Future Crew](http://www.wikipedia.org/wiki/Future_Crew)
