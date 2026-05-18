@@ -42,9 +42,11 @@ assert.equal(paletteDeltas[1][3], 8);
 
 const plasma = new SecondRealityPlasma({ tables, palettes, paletteDeltas, autoCycle: false });
 assert.equal(plasma.plasmaByte(0, 0, [3500, 2300, 3900, 3670]), 130);
-assert.equal(plasma.plasmaByte(17, 23, [1000, 2000, 3000, 4000]), 98);
+assert.equal(plasma.plasmaByte(17, 23, [1000, 2000, 3000, 4000]), 112);
 const indexed = plasma.renderIndexedFrame();
 assert.equal(indexed.length, PLASMA_WIDTH * PLASMA_HEIGHT);
+assert.equal(indexed[0], plasma.plasmaByte(0, 0, plasma.l));
+assert.equal(indexed[4], plasma.plasmaByte(0, 1, plasma.l));
 assert.notEqual(indexed[0], indexed[1], "planar checkerboard should interleave phase sets");
 
 const rgba = new Uint8ClampedArray(PLASMA_WIDTH * PLASMA_HEIGHT * 4);

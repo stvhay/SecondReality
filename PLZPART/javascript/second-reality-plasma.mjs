@@ -3,10 +3,10 @@
 const ORIGINAL_PI = 3.1415926535;
 const TWO_PI = ORIGINAL_PI * 2;
 
-export const PLASMA_WIDTH_BYTES = 84;
+export const PLASMA_WIDTH_BYTES = 80;
 export const PLASMA_WIDTH = PLASMA_WIDTH_BYTES * 4;
 export const PLASMA_HEIGHT = 280;
-export const VGA_SIGNAL_WIDTH = 384;
+export const VGA_SIGNAL_WIDTH = 320;
 export const VGA_SIGNAL_HEIGHT = 400;
 export const VGA_PLASMA_TOP = 60;
 export const VGA_FPS = 70;
@@ -359,13 +359,12 @@ export class SecondRealityPlasma {
   plasmaByte(y, byteX, phases) {
     const [c1, c2, c3, c4] = phases;
     const y2 = y << 1;
-    const firstWave =
-      this.tables.lsini16[(c2 + y + ((80 - byteX) << 2)) & LSINI_MASK];
-    const secondWave =
-      this.tables.lsini4[(c4 + y + byteX * 48) & LSINI_MASK];
+    const reverseX = PLASMA_WIDTH_BYTES - byteX;
+    const firstWave = this.tables.lsini16[(c2 + y + reverseX * 4) & LSINI_MASK];
+    const secondWave = this.tables.lsini4[(c4 + y + byteX * 16) & LSINI_MASK];
 
-    const firstIndex = (byteX * 40 + firstWave + c1) & PSINI_MASK;
-    const secondIndex = (secondWave + y2 + c3 - (byteX << 2) + 80 * 4) & PSINI_MASK;
+    const firstIndex = (byteX * 8 + firstWave + c1) & PSINI_MASK;
+    const secondIndex = (secondWave + y2 + c3 + reverseX * 4) & PSINI_MASK;
 
     return (this.tables.psini[firstIndex] + this.tables.psini[secondIndex]) & 255;
   }
