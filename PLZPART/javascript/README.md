@@ -38,10 +38,14 @@ For each rendered VGA byte column `x` and line `y`, the JavaScript port
 implements the same effective expression as `plzline`:
 
 ```js
-first = psini[x * 32 + lsini16[c2 + y + (80 - x) * 4] + c1]
-second = psini[lsini4[c4 + y + x * 16] + y * 2 + c3 - x * 4 + 80 * 4]
+first = psini[x * 40 + lsini16[c2 + y + (80 - x) * 4] + c1]
+second = psini[lsini4[c4 + y + x * 48] + y * 2 + c3 - x * 4 + 80 * 4]
 color = (first + second) & 255
 ```
+
+The `x * 40` and `x * 48` terms are easy to miss because they are split
+between the unrolled instruction displacements and the values written by
+`setplzparas`.
 
 `COPPER.ASM::moveplz` advances two independent phase sets every retrace:
 
@@ -76,8 +80,8 @@ The raster-sensitive parts are the transitions and presentation:
   high bit in register `0x07`. This creates the moving split/drop used between
   palette/phase presets.
 - `copper2` updates the DAC palette during vertical retrace. The JavaScript
-  port keeps the palette presets and switch timing, but it does not depend on a
-  real scanout beam.
+  port keeps the palette presets, 70 Hz stepping, and a black/grey-to-palette
+  fade approximation, but it does not depend on a real scanout beam.
 
 In short: the characteristic plasma texture is table math plus planar
 interleaving; VGA raster timing mainly affects the drop/palette transitions.

@@ -1,4 +1,7 @@
-const TWO_PI = Math.PI * 2;
+// Match the constant used by PLZ.C's disabled DO_TABLES generator. Math.PI is
+// more precise, but the checked-in tables came from this 1993-era literal.
+const ORIGINAL_PI = 3.1415926535;
+const TWO_PI = ORIGINAL_PI * 2;
 
 export const PLASMA_WIDTH_BYTES = 84;
 export const PLASMA_WIDTH = PLASMA_WIDTH_BYTES * 4;
@@ -82,8 +85,14 @@ function makeDefaultTables() {
 
   ptau[0] = 0;
   for (let a = 1; a <= 128; a += 1) {
-    ptau[a] = cInt(Math.cos((a * TWO_PI) / 128 + Math.PI) * 31 + 32);
+    ptau[a] = cInt(Math.cos((a * TWO_PI) / 128 + ORIGINAL_PI) * 31 + 32);
   }
+
+  // The source-controlled LSINI4.INC differs from the nominal C formula at the
+  // two quarter-turn minima. Keep the port byte-for-byte aligned with the table
+  // the assembly actually includes.
+  lsini4[3072] = 23;
+  lsini4[7168] = 23;
 
   return { psini, lsini4, lsini16, ptau };
 }
@@ -125,6 +134,20 @@ function paletteFromRaw(raw) {
     palette[i] = vga6To8(raw[i]);
   }
   return palette;
+}
+
+function solidPalette(vgaValue) {
+  const palette = new Uint8ClampedArray(256 * 3);
+  palette.fill(vga6To8(vgaValue));
+  return palette;
+}
+
+function blendPalettes(target, from, to, amount) {
+  const t = Math.max(0, Math.min(1, amount));
+  for (let i = 0; i < target.length; i += 1) {
+    target[i] = from[i] + (to[i] - from[i]) * t;
+  }
+  return target;
 }
 
 export function generatePalettes(ptau = getSharedTables().ptau) {
@@ -202,8 +225,14 @@ export class SecondRealityPlasma {
     this.height = options.height || PLASMA_HEIGHT;
     this.autoCycle = options.autoCycle !== false;
     this.loop = options.loop !== false;
+    this.emulatePaletteFades = options.emulatePaletteFades !== false;
     this.paletteSwitchFrames = options.paletteSwitchFrames || PALETTE_SWITCH_FRAMES;
     this.indexedFrame = new Uint8Array(this.width * this.height);
+    this.displayPalette = new Uint8ClampedArray(256 * 3);
+    this.fadeFromPalette = solidPalette(63);
+    this.fadeTargetPalette = this.palettes[0].slice();
+    this.fadeFrame = 0;
+    this.fadeLength = 128;
     this.reset();
   }
 
@@ -214,6 +243,10 @@ export class SecondRealityPlasma {
     this.dropCounter = 128;
     this.l = INITIAL_L.slice();
     this.k = INITIAL_K.slice();
+    this.fadeFromPalette = solidPalette(63);
+    this.fadeTargetPalette = this.palettes[0].slice();
+    this.fadeFrame = 0;
+    this.fadeLength = 128;
   }
 
   setPreset(index) {
@@ -222,10 +255,29 @@ export class SecondRealityPlasma {
     this.k = preset.k.slice();
     this.paletteIndex = Math.min(index, this.palettes.length - 1);
     this.dropCounter = 1;
+    this.fadeFromPalette = solidPalette(0);
+    this.fadeTargetPalette = this.palettes[this.paletteIndex].slice();
+    this.fadeFrame = 0;
+    this.fadeLength = 32;
   }
 
   currentLineCompare() {
     return dropLineCompare(this.dropCounter);
+  }
+
+  currentPalette() {
+    if (!this.emulatePaletteFades) {
+      return this.palettes[this.paletteIndex];
+    }
+    if (this.fadeFrame >= this.fadeLength) {
+      return this.fadeTargetPalette;
+    }
+    return blendPalettes(
+      this.displayPalette,
+      this.fadeFromPalette,
+      this.fadeTargetPalette,
+      this.fadeFrame / this.fadeLength,
+    );
   }
 
   plasmaByte(y, byteX, phases) {
@@ -234,9 +286,9 @@ export class SecondRealityPlasma {
     const firstWave =
       this.tables.lsini16[(c2 + y + ((80 - byteX) << 2)) & LSINI_MASK];
     const secondWave =
-      this.tables.lsini4[(c4 + y + (byteX << 4)) & LSINI_MASK];
+      this.tables.lsini4[(c4 + y + byteX * 48) & LSINI_MASK];
 
-    const firstIndex = (byteX * 32 + firstWave + c1) & PSINI_MASK;
+    const firstIndex = (byteX * 40 + firstWave + c1) & PSINI_MASK;
     const secondIndex = (secondWave + y2 + c3 - (byteX << 2) + 80 * 4) & PSINI_MASK;
 
     return (this.tables.psini[firstIndex] + this.tables.psini[secondIndex]) & 255;
@@ -269,7 +321,7 @@ export class SecondRealityPlasma {
     return target;
   }
 
-  renderRGBAFrame(target, palette = this.palettes[this.paletteIndex]) {
+  renderRGBAFrame(target, palette = this.currentPalette()) {
     const indexed = this.renderIndexedFrame();
     for (let i = 0, o = 0; i < indexed.length; i += 1, o += 4) {
       const color = indexed[i] * 3;
@@ -324,6 +376,7 @@ export class SecondRealityPlasma {
 
       this.advancePhases();
       this.frame += 1;
+      this.fadeFrame += 1;
       if (this.dropCounter > 0 && this.dropCounter < 256) {
         this.dropCounter += 1;
       }
@@ -366,12 +419,13 @@ export function mountSecondRealityPlasma(options = {}) {
     accumulator += now - previous;
     previous = now;
 
-    const frames = Math.max(1, Math.min(4, Math.floor(accumulator / frameMs) || 1));
-    accumulator = Math.max(0, accumulator - frames * frameMs);
-
-    plasma.step(frames);
-    plasma.drawToCanvas(canvas);
-    updateStatus();
+    const frames = Math.min(4, Math.floor(accumulator / frameMs));
+    if (frames > 0) {
+      accumulator = Math.max(0, accumulator - frames * frameMs);
+      plasma.step(frames);
+      plasma.drawToCanvas(canvas);
+      updateStatus();
+    }
     requestId = requestAnimationFrame(tick);
   }
 
