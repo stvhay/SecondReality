@@ -1,15 +1,12 @@
 // Display renderer for the Second Reality PLZ plasma.
 //
-// Upscales the 320x400 VGA signal to the canvas's CSS size and applies a
-// 3x3 Gaussian blur sized in source-pixel units. With sigma below 1 source
-// pixel the filter softens the nearest-neighbour staircase you would
-// otherwise see at fractional scales without smearing detail across
-// neighbouring source pixels.
-//
-// This replaces an earlier multi-pass CRT pipeline (scan beam, RGB stripe
-// mask, halation) that produced visible wobble and banding at common
-// devicePixelRatios. The UI still labels the mode "Monitor" — that's what
-// your browser is doing here, just a touch softer than nearest-neighbour.
+// Upscales the 320x400 VGA signal to the canvas's CSS size with LINEAR
+// texture filtering and applies a CRT-style colour correction: decode the
+// source as sRGB into linear light, apply a mild saturation boost (CRT
+// phosphors look a touch more vivid than sRGB primaries), then re-encode
+// with a slightly higher display gamma (2.4 vs sRGB's effective 2.2) for
+// deeper shadows. No spatial effects — no blur, no scanlines, no mask, no
+// halation.
 
 const QUAD_VS = `#version 300 es
 in vec2 aPosition;
@@ -20,41 +17,22 @@ void main() {
 }
 `;
 
-// 9x9 Gaussian in source-pixel coordinates. Sigma is measured in source
-// pixels, so the blur footprint is constant relative to source pixels
-// regardless of how much the browser stretches the canvas. Radius 4 keeps
-// truncation imperceptible for sigma up to ~2 (the slider's max). LINEAR
-// source filtering means each tap is itself a bilinear sample at a
-// fractional source position, so output pixels between source samples stay
-// smooth. A max() guard on twoS2 lets sigma == 0 collapse cleanly to the
-// centre sample without producing NaN.
-const BLUR_FS = `#version 300 es
+const COLOR_FS = `#version 300 es
 precision highp float;
 in vec2 vUV;
 out vec4 fragColor;
 
 uniform sampler2D uSource;
-uniform vec2 uSourceSize;
-uniform float uBlurSigma;
-
-const int RADIUS = 4;
+uniform float uGamma;
+uniform float uSaturation;
 
 void main() {
-  vec2 srcPx = vUV * uSourceSize;
-  vec2 texel = 1.0 / uSourceSize;
-  float twoS2 = max(2.0 * uBlurSigma * uBlurSigma, 1e-6);
-  vec3 acc = vec3(0.0);
-  float wSum = 0.0;
-  for (int dy = -RADIUS; dy <= RADIUS; ++dy) {
-    for (int dx = -RADIUS; dx <= RADIUS; ++dx) {
-      vec2 off = vec2(float(dx), float(dy));
-      float w = exp(-dot(off, off) / twoS2);
-      vec2 uv = (srcPx + off) * texel;
-      acc += texture(uSource, uv).rgb * w;
-      wSum += w;
-    }
-  }
-  fragColor = vec4(acc / wSum, 1.0);
+  vec3 srgb = texture(uSource, vUV).rgb;
+  vec3 lin = pow(max(srgb, 0.0), vec3(2.2));
+  float luma = dot(lin, vec3(0.2126, 0.7152, 0.0722));
+  lin = mix(vec3(luma), lin, uSaturation);
+  vec3 outC = pow(max(lin, 0.0), vec3(1.0 / uGamma));
+  fragColor = vec4(outC, 1.0);
 }
 `;
 
@@ -99,10 +77,9 @@ function createSourceTexture(gl, width, height) {
   return tex;
 }
 
-// Sigma is in source-pixel units. 0.4 source pixels gives FWHM ~0.94
-// source pixels: softens pixel edges, does not smear neighbours together.
 export const DEFAULT_CRT_PARAMS = Object.freeze({
-  blurSigma: 0.4,
+  gamma: 2.4,
+  saturation: 1.1,
   maxPixelRatio: 2.0,
 });
 
@@ -126,11 +103,11 @@ export class CRTRenderer {
     }
     this.gl = gl;
 
-    this.program = linkProgram(gl, QUAD_VS, BLUR_FS);
+    this.program = linkProgram(gl, QUAD_VS, COLOR_FS);
     this.uniforms = {
       uSource: gl.getUniformLocation(this.program, "uSource"),
-      uSourceSize: gl.getUniformLocation(this.program, "uSourceSize"),
-      uBlurSigma: gl.getUniformLocation(this.program, "uBlurSigma"),
+      uGamma: gl.getUniformLocation(this.program, "uGamma"),
+      uSaturation: gl.getUniformLocation(this.program, "uSaturation"),
     };
 
     this.quadVBO = gl.createBuffer();
@@ -176,8 +153,8 @@ export class CRTRenderer {
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.sourceTexture);
     gl.uniform1i(this.uniforms.uSource, 0);
-    gl.uniform2f(this.uniforms.uSourceSize, this.sourceWidth, this.sourceHeight);
-    gl.uniform1f(this.uniforms.uBlurSigma, this.params.blurSigma);
+    gl.uniform1f(this.uniforms.uGamma, this.params.gamma);
+    gl.uniform1f(this.uniforms.uSaturation, this.params.saturation);
 
     gl.bindVertexArray(this.quadVAO);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
