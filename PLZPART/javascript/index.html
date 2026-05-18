@@ -106,6 +106,13 @@
         image-rendering: crisp-edges;
       }
 
+      /* The WebGL output (Monitor mode) renders the source bottom-row-first
+         due to OpenGL clip-space Y conventions. Flip the 2D canvas in Signal
+         mode so the two presentations show the same image orientation. */
+      body.raw-signal .screen canvas[data-second-reality-plasma] {
+        transform: scaleY(-1);
+      }
+
       .screen-inner {
         position: absolute;
         inset: 0;
@@ -169,6 +176,31 @@
         color: #888;
         margin: 0;
         line-height: 1.45;
+      }
+
+      .blur-control {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: #b0b0b0;
+      }
+
+      .blur-control label {
+        font-size: 12px;
+        color: #888;
+      }
+
+      .blur-control input[type="range"] {
+        width: 140px;
+        accent-color: #8be9fd;
+      }
+
+      .blur-control output {
+        font-size: 12px;
+        font-variant-numeric: tabular-nums;
+        min-width: 3em;
+        text-align: right;
+        color: #888;
       }
 
       .actions {
@@ -235,6 +267,11 @@
           <button type="button" role="radio" data-presentation="active" aria-checked="false" aria-pressed="false">Plasma</button>
         </div>
         <p class="mode-help" id="mode-help"></p>
+        <div class="blur-control" title="Gaussian blur sigma, in source pixels (Monitor mode)">
+          <label for="blur-slider">Blur</label>
+          <input id="blur-slider" type="range" min="0" max="2" step="0.05" value="0.4" />
+          <output for="blur-slider" id="blur-value">0.40</output>
+        </div>
         <div class="actions">
           <button id="toggle" type="button">Pause</button>
           <button id="reset" type="button">Reset</button>
@@ -296,6 +333,8 @@
       const toggleBtn = document.getElementById("toggle");
       const resetBtn = document.getElementById("reset");
       const fullscreenBtn = document.getElementById("fullscreen");
+      const blurSlider = document.getElementById("blur-slider");
+      const blurValue = document.getElementById("blur-value");
 
       let running = true;
       let presentation = "crt";
@@ -328,6 +367,15 @@
       resetBtn.addEventListener("click", () => {
         demo.plasma.reset();
       });
+
+      function applyBlur(sigma) {
+        blurValue.textContent = sigma.toFixed(2);
+        demo.setCrtParams({ blurSigma: sigma });
+      }
+      blurSlider.addEventListener("input", () => {
+        applyBlur(Number(blurSlider.value));
+      });
+      applyBlur(Number(blurSlider.value));
 
       const fullscreenSupported = Boolean(
         screenEl.requestFullscreen || screenEl.webkitRequestFullscreen,

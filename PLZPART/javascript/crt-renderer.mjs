@@ -20,11 +20,14 @@ void main() {
 }
 `;
 
-// 3x3 Gaussian in source-pixel coordinates. Sigma is measured in source
+// 9x9 Gaussian in source-pixel coordinates. Sigma is measured in source
 // pixels, so the blur footprint is constant relative to source pixels
-// regardless of how much the browser stretches the canvas. LINEAR source
-// filtering means each tap is itself a bilinear sample at a fractional
-// source position, so output pixels between source samples stay smooth.
+// regardless of how much the browser stretches the canvas. Radius 4 keeps
+// truncation imperceptible for sigma up to ~2 (the slider's max). LINEAR
+// source filtering means each tap is itself a bilinear sample at a
+// fractional source position, so output pixels between source samples stay
+// smooth. A max() guard on twoS2 lets sigma == 0 collapse cleanly to the
+// centre sample without producing NaN.
 const BLUR_FS = `#version 300 es
 precision highp float;
 in vec2 vUV;
@@ -34,14 +37,16 @@ uniform sampler2D uSource;
 uniform vec2 uSourceSize;
 uniform float uBlurSigma;
 
+const int RADIUS = 4;
+
 void main() {
   vec2 srcPx = vUV * uSourceSize;
   vec2 texel = 1.0 / uSourceSize;
-  float twoS2 = 2.0 * uBlurSigma * uBlurSigma;
+  float twoS2 = max(2.0 * uBlurSigma * uBlurSigma, 1e-6);
   vec3 acc = vec3(0.0);
   float wSum = 0.0;
-  for (int dy = -1; dy <= 1; ++dy) {
-    for (int dx = -1; dx <= 1; ++dx) {
+  for (int dy = -RADIUS; dy <= RADIUS; ++dy) {
+    for (int dx = -RADIUS; dx <= RADIUS; ++dx) {
       vec2 off = vec2(float(dx), float(dy));
       float w = exp(-dot(off, off) / twoS2);
       vec2 uv = (srcPx + off) * texel;

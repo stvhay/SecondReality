@@ -514,6 +514,7 @@ export function mountSecondRealityPlasma(options = {}) {
   let running = false;
   let crtRenderer = null;
   let crtRendererFailed = false;
+  let pendingCrtParams = null;
   const crtRendererFactory = options.createCrtRenderer || null;
 
   function ensureCrtRenderer() {
@@ -521,6 +522,10 @@ export function mountSecondRealityPlasma(options = {}) {
     if (!crtRendererFactory) return null;
     try {
       crtRenderer = crtRendererFactory(crtCanvas, plasma.signalWidth, plasma.signalHeight);
+      if (pendingCrtParams) {
+        crtRenderer.setParams(pendingCrtParams);
+        pendingCrtParams = null;
+      }
     } catch (error) {
       crtRendererFailed = true;
       if (typeof console !== "undefined") {
@@ -528,6 +533,15 @@ export function mountSecondRealityPlasma(options = {}) {
       }
     }
     return crtRenderer;
+  }
+
+  function setCrtParams(params) {
+    if (crtRenderer) {
+      crtRenderer.setParams(params);
+    } else {
+      pendingCrtParams = { ...(pendingCrtParams || {}), ...params };
+    }
+    if (presentation === "crt") draw();
   }
 
   function updateStatus() {
@@ -598,5 +612,5 @@ export function mountSecondRealityPlasma(options = {}) {
     start();
   }
 
-  return { plasma, start, stop, draw, setPresentation };
+  return { plasma, start, stop, draw, setPresentation, setCrtParams };
 }
