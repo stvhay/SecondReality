@@ -488,17 +488,22 @@ export class SecondRealityPlasma {
   }
 }
 
+function resolveElement(value, fallbackSelector) {
+  if (!value && fallbackSelector) {
+    return document.querySelector(fallbackSelector);
+  }
+  if (typeof value === "string") return document.querySelector(value);
+  return value || null;
+}
+
 export function mountSecondRealityPlasma(options = {}) {
-  const canvas =
-    typeof options.canvas === "string"
-      ? document.querySelector(options.canvas)
-      : options.canvas || document.querySelector("[data-second-reality-plasma]");
+  const canvas = resolveElement(options.canvas, "[data-second-reality-plasma]");
   if (!canvas) {
     throw new Error("No canvas supplied for Second Reality plasma");
   }
+  const crtCanvas = resolveElement(options.crtCanvas, "[data-second-reality-plasma-crt]");
 
-  const status =
-    typeof options.status === "string" ? document.querySelector(options.status) : options.status;
+  const status = resolveElement(options.status, null);
   const plasma = new SecondRealityPlasma(options);
   const fps = options.fps || VGA_FPS;
   const frameMs = 1000 / fps;
@@ -507,15 +512,47 @@ export function mountSecondRealityPlasma(options = {}) {
   let previous = 0;
   let accumulator = 0;
   let running = false;
+  let crtRenderer = null;
+  let crtRendererFailed = false;
+  const crtRendererFactory = options.createCrtRenderer || null;
+
+  function ensureCrtRenderer() {
+    if (crtRenderer || crtRendererFailed || !crtCanvas) return crtRenderer;
+    if (!crtRendererFactory) return null;
+    try {
+      crtRenderer = crtRendererFactory(crtCanvas, plasma.signalWidth, plasma.signalHeight);
+    } catch (error) {
+      crtRendererFailed = true;
+      if (typeof console !== "undefined") {
+        console.warn("Falling back to 2D signal view; CRT shader init failed:", error);
+      }
+    }
+    return crtRenderer;
+  }
 
   function updateStatus() {
     if (!status) return;
     status.textContent = `vga ${plasma.frame} | music ${Math.floor(plasma.musicFrame)} | palette ${plasma.paletteIndex + 1}/${plasma.palettes.length} | line compare ${plasma.currentLineCompare()} | ${presentation}`;
   }
 
-  function draw() {
-    plasma.drawToCanvas(canvas, { signal: presentation !== "active" });
+  function showCanvases() {
+    const useCrt = presentation === "crt" && crtCanvas && ensureCrtRenderer();
+    if (crtCanvas) {
+      crtCanvas.style.display = useCrt ? "block" : "none";
+      crtCanvas.dataset.presentation = presentation;
+    }
+    canvas.style.display = useCrt ? "none" : "block";
     canvas.dataset.presentation = presentation;
+  }
+
+  function draw() {
+    showCanvases();
+    if (presentation === "crt" && crtRenderer) {
+      plasma.renderSignalFrame();
+      crtRenderer.render(plasma.signalFrame);
+      return;
+    }
+    plasma.drawToCanvas(canvas, { signal: presentation !== "active" });
   }
 
   function tick(now) {
