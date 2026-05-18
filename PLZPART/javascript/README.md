@@ -71,8 +71,8 @@ directory is `captures/plasma`.
 | Plane-mask checkerboard interleave | `PLZ.C` writes masks `0x0a`/`0x05` | Ported into chunky pixels. |
 | 70 Hz retrace phase stepping | `COPPER.ASM::moveplz` | Ported as fixed-step animation. |
 | 384x400 tweaked VGA presentation | `TWEAK.ASM::tw_opengraph2` | Ported as the "Raw VGA signal" view. |
-| Line-compare drop | `COPPER.ASM::do_drop`, `dtau` | Partially ported: the band position follows the source curve and pending constants activate at `cop_drop == 65`; exact latch/CRTC side effects are not emulated. |
-| DAC fade accumulator | `COPPER.ASM::fadepal` | Approximated; this is a remaining fidelity target. |
+| Line-compare drop | `COPPER.ASM::do_drop`, `dtau` | Partially ported: the band position follows the source curve, pending constants activate at `cop_drop == 65`, and transition drops reset after `cop_drop > 96`; exact latch/CRTC side effects are not emulated. |
+| DAC fade accumulator | `COPPER.ASM::fadepal` | Ported as an 8.8 fixed-point high/low-byte accumulator using the same `pals[]` deltas and high-byte-only clear on transitions. |
 | CRT/capture glow, blur, persistence | Outside the original source | Treated as a separate transfer layer, not part of the source-faithful raw VGA signal. |
 
 ## Source timing notes
@@ -151,9 +151,9 @@ The raster-sensitive parts are the transitions and presentation:
   high bit in register `0x07`. This creates the moving split/drop used between
   palette/phase presets. The normal visible plasma band begins at scanline 60;
   the 65-entry `dtau` table moves it down to approximately scanline 404.
-- `copper2` updates the DAC palette during vertical retrace. The JavaScript
-  port keeps the palette presets, 70 Hz stepping, and a black/grey-to-palette
-  fade approximation, but it does not depend on a real scanout beam.
+- `copper2` updates the DAC palette during vertical retrace using `fadepal` as
+  768 visible high bytes plus 768 fractional low bytes. The JavaScript port now
+  follows that accumulator model, but it does not depend on a real scanout beam.
 
 In short: the characteristic plasma texture is table math plus planar
 interleaving; VGA raster timing mainly affects the drop/palette transitions.
