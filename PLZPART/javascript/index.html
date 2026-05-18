@@ -24,15 +24,57 @@
         padding: 24px;
       }
 
-      canvas {
+      .screen {
         width: 100%;
         max-width: 900px;
-        aspect-ratio: 336 / 280;
-        display: block;
+        aspect-ratio: 4 / 3;
+        position: relative;
+        display: grid;
+        place-items: center;
+        overflow: hidden;
         border: 1px solid #333333;
+        border-radius: 10px;
+        background: #000000;
+      }
+
+      .screen::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        opacity: 0.28;
+        background:
+          repeating-linear-gradient(
+            to bottom,
+            rgb(255 255 255 / 0.08) 0,
+            rgb(255 255 255 / 0.08) 1px,
+            transparent 1px,
+            transparent 3px
+          ),
+          radial-gradient(circle at center, transparent 58%, rgb(0 0 0 / 0.45) 100%);
+        mix-blend-mode: screen;
+      }
+
+      body.sharp .screen {
+        aspect-ratio: 336 / 280;
+      }
+
+      body.sharp .screen::after {
+        display: none;
+      }
+
+      canvas {
+        width: 100%;
+        height: 100%;
+        display: block;
+        filter: blur(0.35px) saturate(1.22) contrast(1.08);
+        background: #000000;
+      }
+
+      body.sharp canvas {
+        filter: none;
         image-rendering: pixelated;
         image-rendering: crisp-edges;
-        background: #000000;
       }
 
       h1 {
@@ -63,15 +105,18 @@
   <body>
     <main>
       <h1>Second Reality PLZ plasma JavaScript port</h1>
-      <canvas data-second-reality-plasma width="336" height="280"></canvas>
+      <div class="screen">
+        <canvas data-second-reality-plasma width="336" height="280"></canvas>
+      </div>
       <div class="status" id="status"></div>
       <button id="toggle" type="button">Pause</button>
       <button id="reset" type="button">Reset</button>
+      <button id="crt" type="button">Sharp pixels</button>
       <p>
         This recreates the plasma part listed in SCRIPT immediately before
         Plasmacube. It keeps the original lookup-table formula, phase speeds,
-        palette presets, and VGA planar checkerboard interleave, but renders to
-        an HTML canvas instead of tweaked VGA memory.
+        palette fades, 70 Hz stepping, and VGA planar checkerboard interleave,
+        but renders to an HTML canvas instead of tweaked VGA memory.
       </p>
     </main>
 
@@ -96,6 +141,13 @@
 
       document.querySelector("#reset").addEventListener("click", () => {
         demo.plasma.reset();
+      });
+
+      document.querySelector("#crt").addEventListener("click", (event) => {
+        document.body.classList.toggle("sharp");
+        event.currentTarget.textContent = document.body.classList.contains("sharp")
+          ? "CRT presentation"
+          : "Sharp pixels";
       });
     </script>
   </body>
