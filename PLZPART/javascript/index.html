@@ -258,9 +258,11 @@
       </p>
       <p>
         <strong>Monitor</strong> sends that signal through a WebGL2 shader modelled on a 1992
-        NEC MultiSync-class shadow-mask monitor: CRT-gamma decode, vertical scan
-        beam, staggered shadow-mask triads, horizontal phosphor spread, and a
-        separable halation bloom. Geometry is left flat &mdash; no curvature, no warp.
+        high-end CRT: CRT-gamma decode, vertical scan beam, wide horizontal
+        phosphor spread, a smooth cosine RGB-stripe aperture-grille mask, and a
+        separable halation bloom. The smooth mask and pre-blurred source keep
+        fractional output-to-source sampling alias-free; geometry stays flat,
+        no curvature, no warp.
         <strong>Signal</strong> shows the raw 320&times;400 framebuffer at square-pixel aspect,
         including the line-compare drop between palette transitions.
         <strong>Plasma</strong> is just the 320&times;280 chunky pixel buffer the assembly renderer
@@ -282,7 +284,7 @@
       window.secondRealityPlasmaDemo = demo;
 
       const MODE_HELP = {
-        crt: "1992 NEC MultiSync-style shadow-mask shader: gamma decode, scan beam, phosphor spread, halation. Flat geometry, no warp.",
+        crt: "1992 high-end CRT shader: gamma decode, scan beam, wide phosphor spread, smooth RGB-stripe aperture grille, halation. Flat geometry, no warp.",
         signal: "Raw 320×400 VGA framebuffer with square pixels. Includes the line-compare drop between palette transitions.",
         active: "The 320×280 chunky plasma image the assembly renderer fills into video memory, before VGA presentation.",
       };

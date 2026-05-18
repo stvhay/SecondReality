@@ -36,24 +36,29 @@ uniform float uGamma;
 uniform float uScanSigma;
 uniform float uPhosphorSigma;
 uniform float uMaskStripePx;
-uniform float uMaskRowPx;
 uniform float uMaskLow;
 uniform float uBrightness;
+
+const float TWO_PI = 6.283185307179586;
+const float TWO_PI_3 = 2.0943951023931953;
+const float FOUR_PI_3 = 4.1887902047863905;
 
 vec3 crtDecode(vec3 c) {
   return pow(max(c, 0.0), vec3(uGamma));
 }
 
+// 5-tap horizontal Gaussian over the source. Source texture is LINEAR-filtered,
+// so fractional srcX returns a bilinearly interpolated value, which keeps
+// fractional output-to-source sampling free of source-pixel-edge artefacts.
 vec3 horizontalTap(float srcX, float srcY) {
   vec2 texel = 1.0 / uSourceSize;
   vec3 acc = vec3(0.0);
   float wSum = 0.0;
-  for (int dx = -1; dx <= 1; ++dx) {
+  for (int dx = -2; dx <= 2; ++dx) {
     float xOff = float(dx);
     float w = exp(-(xOff * xOff) / (2.0 * uPhosphorSigma * uPhosphorSigma));
     vec2 uv = vec2((srcX + xOff + 0.5) * texel.x, (srcY + 0.5) * texel.y);
-    vec3 c = texture(uSource, uv).rgb;
-    acc += crtDecode(c) * w;
+    acc += crtDecode(texture(uSource, uv).rgb) * w;
     wSum += w;
   }
   return acc / wSum;
@@ -64,10 +69,11 @@ void main() {
   vec2 srcCoord = vec2(vUV.x * uSourceSize.x - 0.5,
                        vUV.y * uSourceSize.y - 0.5);
 
+  // 5-tap vertical scan-beam profile.
   float centerRow = floor(srcCoord.y + 0.5);
   vec3 beam = vec3(0.0);
   float wSum = 0.0;
-  for (int dy = -1; dy <= 1; ++dy) {
+  for (int dy = -2; dy <= 2; ++dy) {
     float rowY = centerRow + float(dy);
     float dist = srcCoord.y - rowY;
     float w = exp(-(dist * dist) / (2.0 * uScanSigma * uScanSigma));
@@ -76,17 +82,20 @@ void main() {
   }
   vec3 lit = beam / wSum;
 
-  // Staggered shadow-mask triads. Each cell of (uMaskStripePx * 3) wide x
-  // (uMaskRowPx * 2) tall produces six RGB sub-cells in a 3-phase pattern
-  // shifted by one stripe every uMaskRowPx rows -- a coarse approximation
-  // of an NEC MultiSync shadow mask.
-  float stripeIndex = floor(mod(outPx.x, uMaskStripePx * 3.0) / uMaskStripePx);
-  float rowIndex = floor(mod(outPx.y, uMaskRowPx * 2.0) / uMaskRowPx);
-  int phase = int(mod(stripeIndex + rowIndex, 3.0));
-  vec3 mask;
-  if (phase == 0) mask = vec3(1.0, uMaskLow, uMaskLow);
-  else if (phase == 1) mask = vec3(uMaskLow, 1.0, uMaskLow);
-  else mask = vec3(uMaskLow, uMaskLow, 1.0);
+  // Smooth cosine RGB stripe mask in output-pixel coordinates. Three phases
+  // offset by 2pi/3 give a Trinitron-style aperture-grille pattern with no
+  // sharp transitions, so the mask doesn't beat against the (smoothed) source
+  // pixel grid and survives the browser's CSS rescale without producing
+  // banding.
+  float maskPeriod = uMaskStripePx * 3.0;
+  float t = outPx.x * TWO_PI / maskPeriod;
+  float low = uMaskLow;
+  float amp = 1.0 - low;
+  vec3 mask = vec3(
+    low + amp * (0.5 + 0.5 * cos(t)),
+    low + amp * (0.5 + 0.5 * cos(t - TWO_PI_3)),
+    low + amp * (0.5 + 0.5 * cos(t - FOUR_PI_3))
+  );
 
   fragColor = vec4(lit * mask * uBrightness, 1.0);
 }
@@ -193,19 +202,16 @@ function createFramebuffer(gl, texture) {
 export const DEFAULT_CRT_PARAMS = Object.freeze({
   gamma: 2.2,
   scanSigma: 0.85,
-  phosphorSigma: 0.55,
+  // Phosphor spread in source-pixel units. Wider than one pixel breaks the
+  // source-pixel grid before the mask sees it, so the smooth cosine mask
+  // doesn't beat against fractional source boundaries at the display.
+  phosphorSigma: 1.10,
   maskStripePx: 3.0,
-  maskRowPx: 2.0,
-  maskLow: 0.32,
+  maskLow: 0.42,
   brightness: 1.55,
   halationSigma: 3.0,
   halationGain: 0.18,
   maxPixelRatio: 2.0,
-  // Largest integer source-pixel scale for the WebGL drawing buffer.
-  // The shadow-mask and scan-beam pitch are locked to this buffer grid, so
-  // an integer multiple eliminates Moire that would otherwise beat against
-  // fractional source-pixel boundaries at the display surface.
-  maxIntegerScale: 6,
 });
 
 export class CRTRenderer {
@@ -237,7 +243,7 @@ export class CRTRenderer {
       beam: this._collectUniforms(this.programs.beam, [
         "uSource", "uSourceSize", "uOutputSize",
         "uGamma", "uScanSigma", "uPhosphorSigma",
-        "uMaskStripePx", "uMaskRowPx", "uMaskLow", "uBrightness",
+        "uMaskStripePx", "uMaskLow", "uBrightness",
       ]),
       blur: this._collectUniforms(this.programs.blur, [
         "uInput", "uTexelDir", "uSigma",
@@ -260,9 +266,11 @@ export class CRTRenderer {
     gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
     gl.bindVertexArray(null);
 
+    // LINEAR filtering so the 5-tap beam shader can sample at fractional
+    // source coordinates without seeing source-pixel edges as hard steps.
     this.sourceTexture = createTexture(gl, sourceWidth, sourceHeight, {
       internalFormat: gl.RGBA8,
-      filter: gl.NEAREST,
+      filter: gl.LINEAR,
     });
 
     this.fbWidth = 0;
@@ -317,23 +325,15 @@ export class CRTRenderer {
 
   render(rgbaSource) {
     const gl = this.gl;
+    // Drawing buffer matches device pixels so the browser does no rescaling
+    // of the high-frequency mask pattern. The smooth cosine mask + LINEAR
+    // source filtering keep both source-grid and mask-grid sampling
+    // alias-free at any output resolution.
     const dpr = Math.min(window.devicePixelRatio || 1, this.params.maxPixelRatio);
     const cssWidth = Math.max(1, this.canvas.clientWidth);
     const cssHeight = Math.max(1, this.canvas.clientHeight);
-    const devW = Math.max(1, Math.round(cssWidth * dpr));
-    const devH = Math.max(1, Math.round(cssHeight * dpr));
-
-    // Largest integer source-pixel scale that fits inside the device-pixel
-    // surface. Locking the backbuffer to N x source dimensions keeps the
-    // shadow-mask and scan beam aligned to the source grid, so the browser
-    // does the only fractional rescale (smoothly) when stretching the canvas
-    // to its CSS box. Eliminates the Moire wobble that otherwise beats
-    // between the mask pitch and ~3.4 device pixels per source pixel.
-    const maxScale = Math.max(1, this.params.maxIntegerScale || 6);
-    const fitScale = Math.min(devW / this.sourceWidth, devH / this.sourceHeight);
-    const scale = Math.max(1, Math.min(maxScale, Math.floor(fitScale)));
-    const width = this.sourceWidth * scale;
-    const height = this.sourceHeight * scale;
+    const width = Math.max(1, Math.round(cssWidth * dpr));
+    const height = Math.max(1, Math.round(cssHeight * dpr));
 
     if (this.canvas.width !== width) this.canvas.width = width;
     if (this.canvas.height !== height) this.canvas.height = height;
@@ -364,7 +364,6 @@ export class CRTRenderer {
     gl.uniform1f(this.uniforms.beam.uScanSigma, p.scanSigma);
     gl.uniform1f(this.uniforms.beam.uPhosphorSigma, p.phosphorSigma);
     gl.uniform1f(this.uniforms.beam.uMaskStripePx, p.maskStripePx);
-    gl.uniform1f(this.uniforms.beam.uMaskRowPx, p.maskRowPx);
     gl.uniform1f(this.uniforms.beam.uMaskLow, p.maskLow);
     gl.uniform1f(this.uniforms.beam.uBrightness, p.brightness);
     this._drawQuad();
