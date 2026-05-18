@@ -3,6 +3,10 @@
 This directory ports the plasma part listed in `SCRIPT` as `Plasma (WILDF)`,
 immediately before `Plasmacube`, from the original DOS/VGA code to JavaScript.
 
+Live demo:
+
+https://stvhay.github.io/SecondReality/
+
 Run it from this directory with any static HTTP server, then open
 `index.html`:
 
