@@ -140,21 +140,14 @@ function paletteFromRaw(raw) {
   return palette;
 }
 
-function solidPalette(vgaValue) {
-  const palette = new Uint8ClampedArray(256 * 3);
-  palette.fill(vga6To8(vgaValue));
-  return palette;
-}
-
-function blendPalettes(target, from, to, amount) {
-  const t = Math.max(0, Math.min(1, amount));
-  for (let i = 0; i < target.length; i += 1) {
-    target[i] = from[i] + (to[i] - from[i]) * t;
+function paletteFromAccumulator(target, highBytes) {
+  for (let i = 0; i < highBytes.length; i += 1) {
+    target[i] = vga6To8(highBytes[i] & 63);
   }
   return target;
 }
 
-export function generatePalettes(ptau = getSharedTables().ptau) {
+function generateRawPalettes(ptau = getSharedTables().ptau) {
   const rawPalettes = [];
 
   rawPalettes.push(
@@ -207,18 +200,37 @@ export function generatePalettes(ptau = getSharedTables().ptau) {
     }),
   );
 
-  return rawPalettes.map(paletteFromRaw);
+  return rawPalettes;
 }
 
-export function dropLineCompare(dropCounter) {
+export function generatePalettes(ptau = getSharedTables().ptau) {
+  return generateRawPalettes(ptau).map(paletteFromRaw);
+}
+
+export function generatePaletteDeltas(ptau = getSharedTables().ptau) {
+  return generateRawPalettes(ptau).map((raw, paletteIndex) => {
+    const deltas = new Int16Array(raw.length);
+    for (let i = 0; i < raw.length; i += 1) {
+      // PLZ.C converts the first palette into a 128-frame fade from white.
+      // Later palettes are 32-frame-ish black-to-palette fixed-point deltas.
+      deltas[i] = paletteIndex === 0 ? (raw[i] - 63) * 2 : raw[i] * 8;
+    }
+    return deltas;
+  });
+}
+
+export function dropLineCompare(dropCounter, frame = 0) {
   if (dropCounter <= 0) {
-    return VGA_PLASMA_TOP;
+    return VGA_PLASMA_TOP + (frame & 1);
   }
   if (dropCounter <= 64) {
     return cInt((((dropCounter * dropCounter) / 4) * 43) / 128 + VGA_PLASMA_TOP);
   }
   if (dropCounter === 65) {
     return VGA_SIGNAL_HEIGHT;
+  }
+  if (dropCounter > 96 && dropCounter < 128) {
+    return VGA_PLASMA_TOP + (frame & 1);
   }
   return VGA_PLASMA_TOP;
 }
@@ -227,6 +239,7 @@ export class SecondRealityPlasma {
   constructor(options = {}) {
     this.tables = options.tables || getSharedTables();
     this.palettes = options.palettes || generatePalettes(this.tables.ptau);
+    this.paletteDeltas = options.paletteDeltas || generatePaletteDeltas(this.tables.ptau);
     this.widthBytes = options.widthBytes || PLASMA_WIDTH_BYTES;
     this.width = this.widthBytes * 4;
     this.height = options.height || PLASMA_HEIGHT;
@@ -243,10 +256,9 @@ export class SecondRealityPlasma {
     this.rgbaFrame = new Uint8ClampedArray(this.width * this.height * 4);
     this.signalFrame = new Uint8ClampedArray(this.signalWidth * this.signalHeight * 4);
     this.displayPalette = new Uint8ClampedArray(256 * 3);
-    this.fadeFromPalette = solidPalette(63);
-    this.fadeTargetPalette = this.palettes[0].slice();
-    this.fadeFrame = 0;
-    this.fadeLength = 128;
+    this.fadeHigh = new Uint8Array(256 * 3);
+    this.fadeLow = new Uint8Array(256 * 3);
+    this.fadeDeltaIndex = 0;
     this.pendingPresetIndex = null;
     this.reset();
   }
@@ -259,10 +271,9 @@ export class SecondRealityPlasma {
     this.dropCounter = 128;
     this.l = INITIAL_L.slice();
     this.k = INITIAL_K.slice();
-    this.fadeFromPalette = solidPalette(63);
-    this.fadeTargetPalette = this.palettes[0].slice();
-    this.fadeFrame = 0;
-    this.fadeLength = 128;
+    this.fadeHigh.fill(63);
+    this.fadeLow.fill(0);
+    this.fadeDeltaIndex = 0;
     this.pendingPresetIndex = null;
   }
 
@@ -271,41 +282,78 @@ export class SecondRealityPlasma {
     this.l = preset.l.slice();
     this.k = preset.k.slice();
     this.paletteIndex = Math.min(index, this.palettes.length - 1);
-    this.fadeFromPalette = solidPalette(0);
-    this.fadeTargetPalette = this.palettes[this.paletteIndex].slice();
-    this.fadeFrame = 0;
-    this.fadeLength = 32;
   }
 
   setPreset(index, options = {}) {
     if (options.immediate) {
       this.applyPreset(index);
       this.dropCounter = 1;
+      this.fadeHigh.fill(0);
+      this.fadeDeltaIndex = Math.min(index, this.paletteDeltas.length - 1);
       this.pendingPresetIndex = null;
       return;
     }
 
     this.pendingPresetIndex = index;
+    this.fadeDeltaIndex = Math.min(index, this.paletteDeltas.length - 1);
+    // PLZ.C clears only the visible DAC bytes; the fractional accumulator at
+    // fadepal+768 is intentionally left as-is.
+    this.fadeHigh.fill(0);
     this.dropCounter = 1;
   }
 
   currentLineCompare() {
-    return dropLineCompare(this.dropCounter);
+    return dropLineCompare(this.dropCounter, this.frame);
   }
 
   currentPalette() {
     if (!this.emulatePaletteFades) {
       return this.palettes[this.paletteIndex];
     }
-    if (this.fadeFrame >= this.fadeLength) {
-      return this.fadeTargetPalette;
+    return paletteFromAccumulator(this.displayPalette, this.fadeHigh);
+  }
+
+  updatePaletteAccumulator() {
+    const deltas = this.paletteDeltas[this.fadeDeltaIndex];
+    for (let i = 0; i < deltas.length; i += 1) {
+      const delta = deltas[i];
+      const lowAdd = delta & 255;
+      const highAdd = (delta >> 8) & 255;
+      const low = this.fadeLow[i] + lowAdd;
+      this.fadeLow[i] = low & 255;
+      this.fadeHigh[i] = (this.fadeHigh[i] + highAdd + (low > 255 ? 1 : 0)) & 255;
     }
-    return blendPalettes(
-      this.displayPalette,
-      this.fadeFromPalette,
-      this.fadeTargetPalette,
-      this.fadeFrame / this.fadeLength,
-    );
+  }
+
+  advanceDropAndPalette() {
+    if (this.dropCounter <= 0) {
+      return;
+    }
+
+    this.dropCounter += 1;
+    if (this.dropCounter >= 256) {
+      this.dropCounter = 0;
+      return;
+    }
+
+    if (this.dropCounter <= 64) {
+      return;
+    }
+
+    if (this.dropCounter > 96 && this.dropCounter < 128) {
+      this.dropCounter = 0;
+      return;
+    }
+
+    if (this.dropCounter === 65) {
+      if (this.pendingPresetIndex !== null) {
+        this.applyPreset(this.pendingPresetIndex);
+        this.pendingPresetIndex = null;
+      }
+      return;
+    }
+
+    this.updatePaletteAccumulator();
   }
 
   plasmaByte(y, byteX, phases) {
@@ -430,18 +478,7 @@ export class SecondRealityPlasma {
       this.advancePhases();
       this.frame += 1;
       this.musicFrame = nextMusicFrame;
-      let activatedPendingPreset = false;
-      if (this.dropCounter > 0 && this.dropCounter < 256) {
-        this.dropCounter += 1;
-      }
-      if (this.pendingPresetIndex !== null && this.dropCounter === 65) {
-        this.applyPreset(this.pendingPresetIndex);
-        this.pendingPresetIndex = null;
-        activatedPendingPreset = true;
-      }
-      if (!activatedPendingPreset) {
-        this.fadeFrame += 1;
-      }
+      this.advanceDropAndPalette();
 
       const restartMusicFrame =
         this.paletteSwitchMusicFrames[this.paletteSwitchMusicFrames.length - 1] + 64 + this.musicTickRate * 4;

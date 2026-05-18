@@ -8,6 +8,7 @@ import {
   VGA_SIGNAL_HEIGHT,
   VGA_SIGNAL_WIDTH,
   dropLineCompare,
+  generatePaletteDeltas,
   generatePalettes,
   generateTables,
 } from "./second-reality-plasma.mjs";
@@ -32,10 +33,14 @@ assert.deepEqual(Array.from(tables.lsini4), parseAsmNumbers("../LSINI4.INC"));
 assert.deepEqual(Array.from(tables.lsini16), parseAsmNumbers("../LSINI16.INC"));
 
 const palettes = generatePalettes(tables.ptau);
+const paletteDeltas = generatePaletteDeltas(tables.ptau);
 assert.equal(palettes.length, 5);
 assert.equal(palettes[0].length, 256 * 3);
+assert.equal(paletteDeltas.length, 5);
+assert.equal(paletteDeltas[0][0], -126);
+assert.equal(paletteDeltas[1][3], 8);
 
-const plasma = new SecondRealityPlasma({ tables, palettes, autoCycle: false });
+const plasma = new SecondRealityPlasma({ tables, palettes, paletteDeltas, autoCycle: false });
 assert.equal(plasma.plasmaByte(0, 0, [3500, 2300, 3900, 3670]), 130);
 assert.equal(plasma.plasmaByte(17, 23, [1000, 2000, 3000, 4000]), 98);
 const indexed = plasma.renderIndexedFrame();
@@ -60,11 +65,13 @@ assert.deepEqual(plasma.k, [3497, 2298, 3901, 3672]);
 assert.deepEqual(plasma.l, [999, 1998, 3002, 4003]);
 
 assert.equal(dropLineCompare(0), VGA_PLASMA_TOP);
+assert.equal(dropLineCompare(0, 1), VGA_PLASMA_TOP + 1);
 assert.equal(dropLineCompare(64), 404);
 assert.equal(dropLineCompare(65), VGA_SIGNAL_HEIGHT);
 assert.equal(dropLineCompare(128), VGA_PLASMA_TOP);
+assert.equal(dropLineCompare(100, 1), VGA_PLASMA_TOP + 1);
 
-const transition = new SecondRealityPlasma({ tables, palettes, autoCycle: false });
+const transition = new SecondRealityPlasma({ tables, palettes, paletteDeltas, autoCycle: false });
 transition.setPreset(1);
 assert.deepEqual(transition.k, [3500, 2300, 3900, 3670]);
 assert.equal(transition.dropCounter, 1);
@@ -77,9 +84,16 @@ assert.equal(transition.currentLineCompare(), VGA_SIGNAL_HEIGHT);
 assert.deepEqual(transition.k, [1500, 2300, 3900, 1670]);
 assert.deepEqual(transition.l, [1000, 2000, 4000, 4000]);
 assert.equal(transition.paletteIndex, 1);
-assert.equal(transition.fadeFrame, 0);
+assert.equal(transition.fadeHigh[3], 0);
+transition.step(1);
+assert.equal(transition.fadeHigh[3], 0);
+transition.step(30);
+assert.equal(transition.fadeHigh[3], 0);
+transition.step(1);
+assert.equal(transition.dropCounter, 0);
+assert.equal(transition.fadeHigh[3], 0);
 
-const auto = new SecondRealityPlasma({ tables, palettes });
+const auto = new SecondRealityPlasma({ tables, palettes, paletteDeltas });
 auto.step(1012);
 assert.equal(auto.nextPaletteSwitch, 0);
 assert.equal(auto.paletteIndex, 0);
