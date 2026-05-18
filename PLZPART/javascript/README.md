@@ -56,7 +56,7 @@ from the live demo or a local server:
 ```sh
 npm install
 npx playwright install chromium
-npm run capture:plasma -- --presentation signal --frames 0,64,128,723,788,1491,1556
+npm run capture:plasma -- --presentation signal --frames 0,70,350,700,1012,1013,1076
 ```
 
 Useful presentations are `active`, `signal`, and `crt`. The default output
@@ -78,18 +78,23 @@ directory is `captures/plasma`.
 ## Source timing notes
 
 `PLZ.C::plz` starts when `dis_musplus() >= 0`, immediately resets the DIS music
-frame counter with `dis_setmframe(0)`, then compares `dis_getmframe()` against:
+tick counter with `dis_setmframe(0)`, then compares `dis_getmframe()` against:
 
 ```text
-723, 1491, 1875, 2259, 2778
+723, 1491, 1875, 2259
 ```
 
-On each threshold the C code clears `fadepal`, sets `cop_drop = 1`, stores the
-next palette target in `cop_fadepal`, and writes the next phase constants only
-to `il*/ik*`. The visible `l*/k*` phases keep moving until
-`COPPER.ASM::do_drop` reaches `cop_drop == 65`, where `initpparas` copies the
-pending phase constants into the live phases. This delayed activation is part
-of the transition and is ported explicitly.
+The source table contains a fifth value (`2778`), but the part exits after the
+fourth transition once `curpal == 5 && cop_drop > 64`, so the fifth value is not
+reached in normal playback. These are STMIK music ticks, not VGA retraces; the
+standalone JavaScript demo advances them at a configurable 50 Hz default while
+the VGA phase animation still advances at 70 Hz. On each threshold the C code
+clears `fadepal`, sets `cop_drop = 1`, stores the next palette target in
+`cop_fadepal`, and writes the next phase constants only to `il*/ik*`. The
+visible `l*/k*` phases keep moving until `COPPER.ASM::do_drop` reaches
+`cop_drop == 65`, where `initpparas` copies the pending phase constants into the
+live phases. This delayed activation is part of the transition and is ported
+explicitly.
 
 ## What the original renderer does
 

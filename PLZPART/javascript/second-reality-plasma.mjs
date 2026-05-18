@@ -10,6 +10,7 @@ export const VGA_SIGNAL_WIDTH = 384;
 export const VGA_SIGNAL_HEIGHT = 400;
 export const VGA_PLASMA_TOP = 60;
 export const VGA_FPS = 70;
+export const DEFAULT_MUSIC_TICK_RATE = 50;
 
 const PHASE_MASK = 4095;
 const PSINI_MASK = 16383;
@@ -27,14 +28,14 @@ const PHASE_PRESETS = [
   { l: [1000, 2000, 3000, 4000], k: [3500, 2300, 3900, 3670] },
 ];
 
-// PLZ.C switches on music frames. In the browser port the same numbers are
-// treated as rendered VGA frames so the sequence can run without the DIS player.
-const PALETTE_SWITCH_FRAMES = [
+// PLZ.C compares DIS/STMIK music tick frames, not VGA frames. The fifth table
+// value is unreachable in practice because the part exits after palette 4's
+// drop has crossed frame 64.
+const PALETTE_SWITCH_MUSIC_FRAMES = [
   64 * 6 * 2 - 45,
   64 * 6 * 4 - 45,
   64 * 6 * 5 - 45,
   64 * 6 * 6 - 45,
-  64 * 6 * 7 + 90,
 ];
 
 function cInt(value) {
@@ -234,7 +235,10 @@ export class SecondRealityPlasma {
     this.autoCycle = options.autoCycle !== false;
     this.loop = options.loop !== false;
     this.emulatePaletteFades = options.emulatePaletteFades !== false;
-    this.paletteSwitchFrames = options.paletteSwitchFrames || PALETTE_SWITCH_FRAMES;
+    this.musicTickRate = options.musicTickRate || DEFAULT_MUSIC_TICK_RATE;
+    this.musicTicksPerFrame = this.musicTickRate / VGA_FPS;
+    this.paletteSwitchMusicFrames =
+      options.paletteSwitchMusicFrames || PALETTE_SWITCH_MUSIC_FRAMES;
     this.indexedFrame = new Uint8Array(this.width * this.height);
     this.rgbaFrame = new Uint8ClampedArray(this.width * this.height * 4);
     this.signalFrame = new Uint8ClampedArray(this.signalWidth * this.signalHeight * 4);
@@ -249,6 +253,7 @@ export class SecondRealityPlasma {
 
   reset() {
     this.frame = 0;
+    this.musicFrame = 0;
     this.paletteIndex = 0;
     this.nextPaletteSwitch = 0;
     this.dropCounter = 128;
@@ -412,10 +417,11 @@ export class SecondRealityPlasma {
 
   step(frames = 1) {
     for (let i = 0; i < frames; i += 1) {
+      const nextMusicFrame = this.musicFrame + this.musicTicksPerFrame;
       if (
         this.autoCycle &&
-        this.nextPaletteSwitch < this.paletteSwitchFrames.length &&
-        this.frame >= this.paletteSwitchFrames[this.nextPaletteSwitch]
+        this.nextPaletteSwitch < this.paletteSwitchMusicFrames.length &&
+        nextMusicFrame > this.paletteSwitchMusicFrames[this.nextPaletteSwitch]
       ) {
         this.setPreset(this.nextPaletteSwitch + 1);
         this.nextPaletteSwitch += 1;
@@ -423,6 +429,7 @@ export class SecondRealityPlasma {
 
       this.advancePhases();
       this.frame += 1;
+      this.musicFrame = nextMusicFrame;
       let activatedPendingPreset = false;
       if (this.dropCounter > 0 && this.dropCounter < 256) {
         this.dropCounter += 1;
@@ -436,8 +443,9 @@ export class SecondRealityPlasma {
         this.fadeFrame += 1;
       }
 
-      const restartFrame = this.paletteSwitchFrames[this.paletteSwitchFrames.length - 1] + VGA_FPS * 4;
-      if (this.loop && this.frame > restartFrame) {
+      const restartMusicFrame =
+        this.paletteSwitchMusicFrames[this.paletteSwitchMusicFrames.length - 1] + 64 + this.musicTickRate * 4;
+      if (this.loop && this.musicFrame > restartMusicFrame) {
         this.reset();
       }
     }
@@ -466,7 +474,7 @@ export function mountSecondRealityPlasma(options = {}) {
 
   function updateStatus() {
     if (!status) return;
-    status.textContent = `frame ${plasma.frame} | palette ${plasma.paletteIndex + 1}/${plasma.palettes.length} | line compare ${plasma.currentLineCompare()} | ${presentation}`;
+    status.textContent = `vga ${plasma.frame} | music ${Math.floor(plasma.musicFrame)} | palette ${plasma.paletteIndex + 1}/${plasma.palettes.length} | line compare ${plasma.currentLineCompare()} | ${presentation}`;
   }
 
   function draw() {
