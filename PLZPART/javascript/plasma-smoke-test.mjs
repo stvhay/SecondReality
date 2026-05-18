@@ -64,4 +64,19 @@ assert.equal(dropLineCompare(64), 404);
 assert.equal(dropLineCompare(65), VGA_SIGNAL_HEIGHT);
 assert.equal(dropLineCompare(128), VGA_PLASMA_TOP);
 
+const transition = new SecondRealityPlasma({ tables, palettes, autoCycle: false });
+transition.setPreset(1);
+assert.deepEqual(transition.k, [3500, 2300, 3900, 3670]);
+assert.equal(transition.dropCounter, 1);
+transition.step(63);
+assert.equal(transition.dropCounter, 64);
+assert.notDeepEqual(transition.k, [1500, 2300, 3900, 1670]);
+transition.step(1);
+assert.equal(transition.dropCounter, 65);
+assert.equal(transition.currentLineCompare(), VGA_SIGNAL_HEIGHT);
+assert.deepEqual(transition.k, [1500, 2300, 3900, 1670]);
+assert.deepEqual(transition.l, [1000, 2000, 4000, 4000]);
+assert.equal(transition.paletteIndex, 1);
+assert.equal(transition.fadeFrame, 0);
+
 console.log("Second Reality plasma JavaScript smoke test passed");

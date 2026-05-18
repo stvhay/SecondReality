@@ -1,0 +1,9 @@
+{
+  "scripts": {
+    "capture:plasma": "node PLZPART/javascript/tools/capture-plasma-frames.mjs",
+    "test:plasma": "node PLZPART/javascript/plasma-smoke-test.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.60.0"
+  }
+}

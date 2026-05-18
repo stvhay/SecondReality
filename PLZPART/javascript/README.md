@@ -48,6 +48,20 @@ traced back to the original source:
 
 The button in `index.html` cycles through these layers.
 
+## Deterministic frame capture
+
+The root `package.json` includes a Playwright helper for comparing exact frames
+from the live demo or a local server:
+
+```sh
+npm install
+npx playwright install chromium
+npm run capture:plasma -- --presentation signal --frames 0,64,128,723,788,1491,1556
+```
+
+Useful presentations are `active`, `signal`, and `crt`. The default output
+directory is `captures/plasma`.
+
 ## Port status and traceability
 
 | Original behavior | Source | Port status |
@@ -57,9 +71,25 @@ The button in `index.html` cycles through these layers.
 | Plane-mask checkerboard interleave | `PLZ.C` writes masks `0x0a`/`0x05` | Ported into chunky pixels. |
 | 70 Hz retrace phase stepping | `COPPER.ASM::moveplz` | Ported as fixed-step animation. |
 | 384x400 tweaked VGA presentation | `TWEAK.ASM::tw_opengraph2` | Ported as the "Raw VGA signal" view. |
-| Line-compare drop | `COPPER.ASM::do_drop`, `dtau` | Partially ported: the band position follows the source curve; exact latch/CRTC side effects are not emulated. |
+| Line-compare drop | `COPPER.ASM::do_drop`, `dtau` | Partially ported: the band position follows the source curve and pending constants activate at `cop_drop == 65`; exact latch/CRTC side effects are not emulated. |
 | DAC fade accumulator | `COPPER.ASM::fadepal` | Approximated; this is a remaining fidelity target. |
 | CRT/capture glow, blur, persistence | Outside the original source | Treated as a separate transfer layer, not part of the source-faithful raw VGA signal. |
+
+## Source timing notes
+
+`PLZ.C::plz` starts when `dis_musplus() >= 0`, immediately resets the DIS music
+frame counter with `dis_setmframe(0)`, then compares `dis_getmframe()` against:
+
+```text
+723, 1491, 1875, 2259, 2778
+```
+
+On each threshold the C code clears `fadepal`, sets `cop_drop = 1`, stores the
+next palette target in `cop_fadepal`, and writes the next phase constants only
+to `il*/ik*`. The visible `l*/k*` phases keep moving until
+`COPPER.ASM::do_drop` reaches `cop_drop == 65`, where `initpparas` copies the
+pending phase constants into the live phases. This delayed activation is part
+of the transition and is ported explicitly.
 
 ## What the original renderer does
 

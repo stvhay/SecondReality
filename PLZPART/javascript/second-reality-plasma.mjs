@@ -243,6 +243,7 @@ export class SecondRealityPlasma {
     this.fadeTargetPalette = this.palettes[0].slice();
     this.fadeFrame = 0;
     this.fadeLength = 128;
+    this.pendingPresetIndex = null;
     this.reset();
   }
 
@@ -257,18 +258,30 @@ export class SecondRealityPlasma {
     this.fadeTargetPalette = this.palettes[0].slice();
     this.fadeFrame = 0;
     this.fadeLength = 128;
+    this.pendingPresetIndex = null;
   }
 
-  setPreset(index) {
+  applyPreset(index) {
     const preset = PHASE_PRESETS[index % PHASE_PRESETS.length];
     this.l = preset.l.slice();
     this.k = preset.k.slice();
     this.paletteIndex = Math.min(index, this.palettes.length - 1);
-    this.dropCounter = 1;
     this.fadeFromPalette = solidPalette(0);
     this.fadeTargetPalette = this.palettes[this.paletteIndex].slice();
     this.fadeFrame = 0;
     this.fadeLength = 32;
+  }
+
+  setPreset(index, options = {}) {
+    if (options.immediate) {
+      this.applyPreset(index);
+      this.dropCounter = 1;
+      this.pendingPresetIndex = null;
+      return;
+    }
+
+    this.pendingPresetIndex = index;
+    this.dropCounter = 1;
   }
 
   currentLineCompare() {
@@ -410,9 +423,17 @@ export class SecondRealityPlasma {
 
       this.advancePhases();
       this.frame += 1;
-      this.fadeFrame += 1;
+      let activatedPendingPreset = false;
       if (this.dropCounter > 0 && this.dropCounter < 256) {
         this.dropCounter += 1;
+      }
+      if (this.pendingPresetIndex !== null && this.dropCounter === 65) {
+        this.applyPreset(this.pendingPresetIndex);
+        this.pendingPresetIndex = null;
+        activatedPendingPreset = true;
+      }
+      if (!activatedPendingPreset) {
+        this.fadeFrame += 1;
       }
 
       const restartFrame = this.paletteSwitchFrames[this.paletteSwitchFrames.length - 1] + VGA_FPS * 4;
@@ -496,5 +517,5 @@ export function mountSecondRealityPlasma(options = {}) {
     start();
   }
 
-  return { plasma, start, stop, setPresentation };
+  return { plasma, start, stop, draw, setPresentation };
 }
